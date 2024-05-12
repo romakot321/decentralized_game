@@ -1,12 +1,13 @@
 from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
 import datetime as dt
 from hashlib import sha256
-import json
-from uuid import uuid4, UUID
-from abc import abstractmethod, ABC
 from backend.utils import asdict
+import json
+from enum import Enum
 
 
+@dataclass
 class StorableModel:
     @classmethod
     @property
@@ -14,13 +15,23 @@ class StorableModel:
         return cls.__name__
 
 
-class TransactionData(ABC):
-    ...
+@dataclass
+class Tip(StorableModel):
+    value: str
+    id: str = 'tip'
 
 
-class Transaction(ABC, StorableModel):
+class TransactionsAction(Enum):
+    MOVE = 'move'
+    PICK = 'pick'
+
+
+class Transaction(ABC):
+    class TransactionData(ABC):
+        ...
+
     data: str
-    actor: UUID
+    actor: str
     action: str
 
     @abstractmethod
@@ -43,6 +54,15 @@ class Transaction(ABC, StorableModel):
             return
         data, actor, action = data.split('||')
         return cls(data=data, actor=actor, action=action)
+
+    @property
+    def hash(self):
+        return sha256(self.dump().encode()).hexdigest()
+
+    @classmethod
+    @property
+    def table_name(cls) -> str:
+        return 'Transaction'
 
     def __str__(self):
         return f'Transaction {self.action}, data = {self.data}, owner = {self.actor}'
@@ -87,6 +107,7 @@ class Block(_BlockParent):
         transactions = [MoveTransaction.undump(i) for i in transactions.split('&&')]
         if transactions == [None]:
             transactions = []
+        transactions = [_action_to_transaction_class.get(TransactionsAction(tr.action))(**asdict(tr)) for tr in transactions]
         return cls(nounce=nounce, timestamp=timestamp, previous_hash=prev_hash, transactions=transactions)
 
     def __str__(self):
@@ -96,32 +117,53 @@ class Block(_BlockParent):
 
 
 @dataclass
-class MoveTransactionData(TransactionData):
-    bias: tuple[int, int]
-
-
-@dataclass
 class MoveTransaction(Transaction):
+    @dataclass
+    class TransactionData(Transaction.TransactionData):
+        bias: tuple[int, int]
+
     data: str
-    actor: UUID
+    actor: str
     action: str = "move"
 
     @classmethod
     def pack_data(cls, data) -> str:
-        if not isinstance(data, dict):
+        if isinstance(data, cls.TransactionData):
             data = asdict(data)
+        elif isinstance(data, tuple):
+            data = asdict(cls.TransactionData(bias=data))
         return json.dumps(data)
 
-    def unpack_data(self) -> MoveTransactionData:
+    def unpack_data(self) -> TransactionData:
         data_state = json.loads(self.data)
-        return MoveTransactionData(**data_state)
+        return self.TransactionData(**data_state)
 
 
 @dataclass
-class Actor(StorableModel):
-    @staticmethod
-    def new_id():
-        return str(uuid4())
+class PickTransaction(Transaction):
+    @dataclass
+    class TransactionData(Transaction.TransactionData):
+        pick_position: tuple[int, int]
+        object_id: str
 
-    id: str = field(default_factory=new_id)
+    data: str
+    actor: str
+    action: str = "pick"
 
+    @classmethod
+    def pack_data(cls, data) -> str:
+        if isinstance(data, cls.TransactionData):
+            data = asdict(data)
+        elif isinstance(data, dict):
+            data = asdict(cls.TransactionData(**data))
+        return json.dumps(data)
+
+    def unpack_data(self) -> TransactionData:
+        data_state = json.loads(self.data)
+        return PickTransaction.TransactionData(**data_state)
+
+
+_action_to_transaction_class = {
+    TransactionsAction.MOVE: MoveTransaction,
+    TransactionsAction.PICK: PickTransaction
+}

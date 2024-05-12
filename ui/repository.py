@@ -36,5 +36,16 @@ class UIRepository:
                     )
                 )
 
+            objects = self.backend_rep.get_static_objects_positions()
+            for obj in objects:
+                position = obj.position
+                self.screen.fill(
+                    (255, 255, 0),
+                    (
+                        (position[0] * SCALE, position[1] * SCALE),
+                        (SCALE, SCALE)
+                    )
+                )
+
             pg.display.flip()
 

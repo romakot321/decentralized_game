@@ -1,17 +1,17 @@
-from backend.models import Block, Transaction, StorableModel
 from backend.utils import asdict
-from dataclasses import dataclass
-
-
-@dataclass
-class Tip(StorableModel):
-    value: str
-    id: str = 'tip'
+from backend.database.models import Tip, Block, Transaction, StorableModel
 
 
 class BlockRepository:
-    def __init__(self, db_service):
+    def __init__(self, db_service, transaction_repository):
         self.db_service = db_service
+        self.trans_rep = transaction_repository
+
+    def generate(self):
+        transactions = self.trans_rep.get_many()
+        self.trans_rep.clear()
+        block = self.make(transactions)
+        return block
 
     def mine(self, block: Block):
         while not block.hash.startswith('00'):
@@ -28,7 +28,19 @@ class BlockRepository:
         new_block = self.mine(new_block)
         return new_block
 
-    def store(self, block: Block) -> int:
+    def validate_transaction(self, transaction: Transaction):
+        return True
+
+    def validate_block(self, block: Block):
+        tip_block = self.get_last()
+        if not tip_block:
+            return True
+        return tip_block.hash == block.previous_hash and \
+                all(self.validate_transaction(tr) for tr in block.transactions)
+
+    def store(self, block: Block) -> int | None:
+        if not self.validate_block(block):
+            return
         self.db_service.save(Tip(value=block.hash))
         return self.db_service.save(block)
 
@@ -51,22 +63,10 @@ class BlockRepository:
             yield curr_block
             curr_block = self.get_one(curr_block.previous_hash)
 
-    def update_chain(self, dumped_data: list[str]):
-        for block in self.iterate_blocks():
+    def replace_chain(self, chain: list[Block]):
+        for block in self.get_many():
             self.db_service.delete(Block.table_name, block.hash)
+        print(self.get_many())
 
-        for data in dumped_data[::-1]:
-            block = Block.undump(data)
-            self.store(block)
-
-    def validate_new_transaction(self, transaction) -> bool:
-        return True
-
-    def add_received_block(self, dumped_data: str):
-        block = Block.undump(dumped_data)
-        tip_block = self.get_last()
-        if tip_block.hash != block.previous_hash:
-            print("!!!Received invalid block!!!")
-            return
-        self.store(block)
+        [self.store(block) for block in chain]
 

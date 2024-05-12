@@ -1,5 +1,5 @@
-from backend.models import Actor
-from backend.models import MoveTransaction, MoveTransactionData
+from backend.engine.models import Actor
+from backend.database.models import TransactionsAction
 from uuid import UUID
 from enum import Enum
 
@@ -12,27 +12,38 @@ class MoveDirections(Enum):
 
 
 class ActorRepository:
-    def __init__(self, block_repository):
+    def __init__(self, block_repository, transaction_repository):
         self.block_rep = block_repository
-        self.cache = {}
+        self.trans_rep = transaction_repository
+        self._pos_cache = {}
+        self._actors_cache = (None, [])
 
-    def create(self) -> Actor:
-        actor = Actor()
-        return actor
+    def make(self) -> Actor:
+        return Actor()
 
-    def make_move(self, actor_id: UUID, direction: MoveDirections) -> MoveTransaction:
-        move = MoveTransactionData(bias=direction.value)
-        transaction = MoveTransaction(
-            data=MoveTransaction.pack_data(move),
-            actor=actor_id
+    def move(self, actor_id: UUID, direction: MoveDirections):
+        transaction = self.trans_rep.make(
+            actor_id,
+            data=direction.value,
+            action=TransactionsAction.MOVE,
         )
-        return transaction
+        self.trans_rep.store(transaction)
 
     def _cache_pos_calculation(self, actor_id, block_hash, pos):
-        self.cache[actor_id] = (block_hash, pos)
+        self._pos_cache[actor_id] = (block_hash, pos)
 
     def _get_cached_pos(self, actor_id) -> tuple[str, tuple] | None:
-        return self.cache.get(actor_id)
+        return self._pos_cache.get(actor_id)
+
+    def get_many(self) -> list[Actor]:
+        actors = set()
+        for block in self.block_rep.iterate_blocks(stop_hash=self._actors_cache[0]):
+            for trans in block.transactions:
+                actors.add(trans.actor)
+        actors = [Actor(id=i) for i in actors]
+        actors.extend(self._actors_cache[1])
+        self._actors_cache = (self.block_rep.get_last().previous_hash, actors)
+        return actors
 
     def get_position(self, actor_id) -> tuple[int, int]:
         curr_pos = (0, 0)

@@ -1,18 +1,19 @@
-from backend.models import StorableModel
+from backend.database.models import StorableModel
 
 
 class DatabaseService:
     def __init__(self):
         self.tables = {}
 
-    def _get_next_id(self) -> int:
-        return max(self.memory.keys(), default=0) + 1
+    def _get_next_id(self, table_name) -> int:
+        return max(self.tables.get(table_name, {}).keys(), default=0) + 1
 
     def save(self, model: StorableModel) -> int:
         if hasattr(model, 'id'):
             model_id = model.id
         else:
-            model_id = self._get_next_id()
+            model_id = self._get_next_id(model.table_name)
+            model.id = model_id
 
         if model.table_name not in self.tables.keys():
             self.tables[model.table_name] = {}
@@ -30,7 +31,7 @@ class DatabaseService:
 
     def find(self, table_name, **filters) -> list[dict]:
         found = filter(
-            lambda m: all([m.get(name) == value for name, value in filters.items()]),
+            lambda m: all([getattr(m, name, None) == value for name, value in filters.items()]),
             self.tables.get(table_name, {}).values()
         )
         return list(found)
