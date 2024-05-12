@@ -1,5 +1,5 @@
-from models import Block, Transaction, StorableModel
-from utils import asdict
+from backend.models import Block, Transaction, StorableModel
+from backend.utils import asdict
 from dataclasses import dataclass
 
 

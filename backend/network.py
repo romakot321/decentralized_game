@@ -4,6 +4,7 @@ import threading
 import time
 from struct import pack, unpack
 from enum import Enum
+import datetime as dt
 
 
 class RequestType(Enum):
@@ -13,7 +14,7 @@ class RequestType(Enum):
 
 
 class NetworkHandler:
-    SEEDER_ADDRESS = os.getenv('SEEDER_ADDRESS', 'localhost:9999').split(':')
+    SEEDER_ADDRESS = os.getenv('SEEDER_ADDRESS', 'localhost:9998').split(':')
     SEEDER_ADDRESS = (SEEDER_ADDRESS[0], int(SEEDER_ADDRESS[1]))
 
     def __init__(self, bind_address: tuple, block_repository):
@@ -54,8 +55,11 @@ class NetworkHandler:
         if not isinstance(data, bytes):
             data = data.encode()
         data_length = pack('>Q', len(data))
-        connection.sendall(data_length)
-        connection.sendall(data)
+        try:
+            connection.sendall(data_length)
+            connection.sendall(data)
+        except (BrokenPipeError, OSError):
+            pass
 
     def update_address_book(self):
         seeder_connection = socket.socket()
@@ -91,16 +95,27 @@ class NetworkHandler:
             s.close()
 
     def accept_connections(self):
+        last_book_update = dt.datetime.now() - dt.timedelta(seconds=10)
         while True:
+            print((dt.datetime.now() - last_book_update).seconds)
+            if (dt.datetime.now() - last_book_update).seconds >= 10:
+                print("updating")
+                self.update_address_book()
+                last_book_update = dt.datetime.now()
+
             try:
                 client_socket, client_address = self.socket.accept()
+                print("receive", client_address)
                 data = client_socket.recv(1)
                 if not data:
                     continue
                 answer = RequestHandler(client_socket, data, self.block_rep).handle()
                 self._send_big(client_socket, answer)
             finally:
-                client_socket.shutdown(socket.SHUT_WR)
+                try:
+                    client_socket.shutdown(socket.SHUT_WR)
+                except OSError:
+                    pass
                 client_socket.close()
 
 

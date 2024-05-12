@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 from uuid import uuid4, UUID
 from abc import abstractmethod, ABC
-from utils import asdict
+from backend.utils import asdict
 
 
 class StorableModel:

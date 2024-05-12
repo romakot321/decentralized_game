@@ -1,4 +1,4 @@
-from models import StorableModel
+from backend.models import StorableModel
 
 
 class DatabaseService:

@@ -1,5 +1,5 @@
-from models import Actor
-from models import MoveTransaction, MoveTransactionData
+from backend.models import Actor
+from backend.models import MoveTransaction, MoveTransactionData
 from uuid import UUID
 from enum import Enum
 
