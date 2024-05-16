@@ -1,8 +1,9 @@
 import random
-from uuid import uuid4
+from uuid import uuid5, NAMESPACE_X500
 
-from backend.engine.models import StaticObject
-from backend.database.models import TransactionsAction
+from app.backend.engine.models import StaticObject
+from app.backend.database.models import TransactionsAction
+from app.backend.database.models import PickTransaction
 
 
 class StaticObjectRepository:
@@ -23,17 +24,23 @@ class StaticObjectRepository:
         for _ in range(random.randint(1, 5)):
             pos = (random.randint(2, 7), random.randint(2, 7))
             self.world.append(
-                StaticObject(position=pos, object_id=str(uuid4()))
+                StaticObject(
+                    position=pos,
+                    object_id=str(uuid5(NAMESPACE_X500, random.randbytes(10)))
+                )
             )
 
     def get_many(self):
+        self.check_remove()
         return self.world
 
     def get_actor_picked(self, actor_id) -> list:
         objects = set()
         for block in self.block_rep.iterate_blocks():
             for transaction in block.transactions:
-                if transaction.action != 'pick':
+                if transaction.action != TransactionsAction.PICK.value:
+                    continue
+                if transaction.actor != actor_id:
                     continue
                 data = transaction.unpack_data()
                 objects.add(data.object_id)
@@ -48,7 +55,7 @@ class StaticObjectRepository:
     def check_remove(self):
         for block in self.block_rep.iterate_blocks():
             for transaction in block.transactions:
-                if transaction.action != 'pick':
+                if transaction.action != TransactionsAction.PICK.value:
                     continue
                 data = transaction.unpack_data()
                 if data.object_id in [i.object_id for i in self.world]:
@@ -60,8 +67,11 @@ class StaticObjectRepository:
             for obj in self.world:
                 if pos == obj.position:
                     trans = self.trans_rep.make(
-                        actor_id=actor.id,
-                        data={'pick_position': pos, 'object_id': obj.object_id},
+                        actor=actor.id,
+                        data=PickTransaction.TransactionData(
+                            pick_position=pos,
+                            object_id=obj.object_id
+                        ),
                         action=TransactionsAction.PICK
                     )
                     self.trans_rep.store(trans)

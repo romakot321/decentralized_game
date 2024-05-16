@@ -1,6 +1,6 @@
-from backend.database.models import Transaction
-from backend.database.models import MoveTransaction, TransactionsAction
-from backend.database.models import PickTransaction, _action_to_transaction_class
+from app.backend.database.models import Transaction
+from app.backend.database.models import MoveTransaction, TransactionsAction
+from app.backend.database.models import PickTransaction, _action_to_transaction_class
 
 from enum import Enum
 
@@ -11,14 +11,20 @@ class TransactionRepository:
     def __init__(self, db_service):
         self.db_service = db_service
 
-    def make(self, actor_id, data: Transaction.TransactionData, action: TransactionsAction):
+    def make(
+            self,
+            actor,
+            data: Transaction.TransactionData | bytes,
+            action: TransactionsAction | bytes
+    ):
         trans_cls = _action_to_transaction_class.get(action)
         if trans_cls is None:
             raise ValueError("Invalid transaction action")
-        data_packed = trans_cls.pack_data(data)
+        if not isinstance(data, bytes):
+            data = trans_cls.pack_data(data)
         return trans_cls(
-            actor=actor_id,
-            data=data_packed
+            actor=actor,
+            data=data
         )
 
     def store(self, transaction: Transaction):

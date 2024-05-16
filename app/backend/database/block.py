@@ -1,29 +1,28 @@
-from backend.utils import asdict
-from backend.database.models import Tip, Block, Transaction, StorableModel
+from app.backend.utils import asdict
+from app.backend.database.models import Tip, Block, Transaction, StorableModel
+import datetime as dt
 
 
 class BlockRepository:
-    def __init__(self, db_service, transaction_repository):
+    def __init__(self, db_service):
         self.db_service = db_service
-        self.trans_rep = transaction_repository
-
-    def generate(self):
-        transactions = self.trans_rep.get_many()
-        self.trans_rep.clear()
-        block = self.make(transactions)
-        return block
 
     def mine(self, block: Block):
         while not block.hash.startswith('00'):
             block.nounce += 1
         return block
 
-    def make(self, transactions: list[Transaction]) -> Block:
-        last_block = self.get_last()
-        prev_hash = '' if last_block is None else last_block.hash
+    def make(self, transactions: list[Transaction], prev_hash, timestamp, nounce) -> Block:
+        if prev_hash is None:
+            last_block = self.get_last()
+            prev_hash = '' if last_block is None else last_block.hash
+        if timestamp is None:
+            timestamp = dt.datetime.now()
         new_block = Block(
             transactions=transactions,
-            previous_hash=prev_hash
+            previous_hash=prev_hash,
+            timestamp=timestamp,
+            nounce=(nounce if nounce else 0)
         )
         new_block = self.mine(new_block)
         return new_block
@@ -58,15 +57,16 @@ class BlockRepository:
 
     def iterate_blocks(self, stop_hash: str | None = None) -> Block:
         curr_block = self.get_last()
+        if stop_hash is None:
+            stop_hash = ''
 
-        while curr_block is not None and curr_block.previous_hash != '' and curr_block.previous_hash != stop_hash:
+        while curr_block is not None and curr_block.hash != stop_hash:
             yield curr_block
             curr_block = self.get_one(curr_block.previous_hash)
 
     def replace_chain(self, chain: list[Block]):
         for block in self.get_many():
             self.db_service.delete(Block.table_name, block.hash)
-        print(self.get_many())
 
-        [self.store(block) for block in chain]
+        [self.store(block) for block in chain[::-1]]
 

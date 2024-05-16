@@ -3,7 +3,7 @@ import threading
 import time
 from enum import Enum
 
-from backend.database.models import TransactionsAction
+from app.backend.database.models import TransactionsAction
 
 
 class ActorEvent(Enum):
@@ -15,14 +15,16 @@ class ActorEvent(Enum):
 
 class BackendRepository:
     def __init__(self, db_service, block_repository,
-                 actor_repository, network_handler,
-                 transaction_repository, static_object_repository):
+                 actor_repository, network_repository,
+                 transaction_repository, static_object_repository,
+                 database_repository):
         self.db_service = db_service
         self.block_rep = block_repository
         self.actor_rep = actor_repository
-        self.net_handler = network_handler
+        self.net_rep = network_repository
         self.trans_rep = transaction_repository
         self.static_rep = static_object_repository
+        self.db_rep = database_repository
 
         self.myactor = None
 
@@ -39,29 +41,34 @@ class BackendRepository:
     def get_static_objects_positions(self) -> list[tuple]:
         return self.static_rep.get_many()
 
+    def get_actor_picked(self) -> list[str]:
+        return self.static_rep.get_actor_picked(self.myactor.id)
+
     def init(self):
-        genesis_block = self.block_rep.make([])
+        genesis_block = self.db_rep.make_block(transactions=[])
         self.block_rep.store(genesis_block)
 
-        self.net_handler.update_address_book()
-        self.net_handler.request_get_blocks()
+        self.net_rep.init()
+        self.net_rep.request_get_address_book()
+        blocks = self.net_rep.request_get_blocks()
+        self.block_rep.replace_chain(blocks)
 
         self.myactor = self.actor_rep.make()
-        new_block = self.block_rep.make([
+        new_block = self.db_rep.make_block([
             self.trans_rep.make(self.myactor.id, ActorEvent.MOVE_RIGHT.value, action=TransactionsAction.MOVE),
             self.trans_rep.make(self.myactor.id, ActorEvent.MOVE_DOWN.value, action=TransactionsAction.MOVE),
         ])
         self.block_rep.store(new_block)
-        self.net_handler.request_new_block(new_block)
+        self.net_rep.request_publish_block(new_block)
 
         self.static_rep.init()
 
     def handle_event(self, event: ActorEvent):
         if event in (ActorEvent.MOVE_UP, ActorEvent.MOVE_DOWN, ActorEvent.MOVE_RIGHT, ActorEvent.MOVE_LEFT):
             self.actor_rep.move(self.myactor.id, event)
-            block = self.block_rep.generate()
+            block = self.db_rep.generate_block()
             self.block_rep.store(block)
-            self.net_handler.request_new_block(block)
+            self.net_rep.request_publish_block(block)
 
         self.static_rep.check_collisions()
 

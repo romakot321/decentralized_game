@@ -14,5 +14,5 @@ class Actor:
 @dataclass
 class StaticObject:
     position: tuple[int, int]
-    object_id: str
+    object_id: int
 

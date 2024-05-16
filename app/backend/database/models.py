@@ -2,9 +2,13 @@ from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 import datetime as dt
 from hashlib import sha256
-from backend.utils import asdict
+from app.backend.utils import asdict
 import json
 from enum import Enum
+import struct
+from uuid import UUID
+
+max_int64 = 0xFFFFFFFFFFFFFFFF
 
 
 @dataclass
@@ -14,6 +18,15 @@ class StorableModel:
     def table_name(cls):
         return cls.__name__
 
+    def dump(self) -> bytes:
+        """Serialize object to bytes for storing and transfer"""
+        return ''.join([str(v) for k, v in self.__dict__.items()]).encode()
+
+    @classmethod
+    def undump(cls, rawdata: bytes) -> object:
+        """Construct object from serialize bytes"""
+        raise NotImplementedError
+
 
 @dataclass
 class Tip(StorableModel):
@@ -22,17 +35,19 @@ class Tip(StorableModel):
 
 
 class TransactionsAction(Enum):
-    MOVE = 'move'
-    PICK = 'pick'
+    MOVE = b'\x00'
+    PICK = b'\x01'
 
 
 class Transaction(ABC):
+    TRANSACTION_DUMPED_SIZE = 64  # in bytes
+
     class TransactionData(ABC):
         ...
 
     data: str
     actor: str
-    action: str
+    action: TransactionsAction
 
     @abstractmethod
     def unpack_data(self) -> TransactionData:
@@ -44,16 +59,6 @@ class Transaction(ABC):
         if not isinstance(data, dict):
             data = asdict(data)
         return json.dumps(data)
-
-    def dump(self):
-        return '||'.join([self.data, str(self.actor), self.action])
-
-    @classmethod
-    def undump(cls, data):
-        if not data:
-            return
-        data, actor, action = data.split('||')
-        return cls(data=data, actor=actor, action=action)
 
     @property
     def hash(self):
@@ -86,29 +91,11 @@ class Block(_BlockParent):
 
     @property
     def hash(self):
-        return sha256(self.dump().encode()).hexdigest()
+        return sha256(f'{self.transactions}{self.previous_hash}{self.timestamp}{self.nounce}'.encode()).hexdigest()
 
     @property
     def id(self):
         return self.hash
-
-    def dump(self) -> str:
-        data = ';;'.join([
-            str(self.nounce),
-            str(self.timestamp),
-            str(self.previous_hash),
-            '&&'.join([tr.dump() for tr in self.transactions])
-        ])
-        return data
-
-    @classmethod
-    def undump(cls, data: str):
-        nounce, timestamp, prev_hash, transactions = data.split(';;')
-        transactions = [MoveTransaction.undump(i) for i in transactions.split('&&')]
-        if transactions == [None]:
-            transactions = []
-        transactions = [_action_to_transaction_class.get(TransactionsAction(tr.action))(**asdict(tr)) for tr in transactions]
-        return cls(nounce=nounce, timestamp=timestamp, previous_hash=prev_hash, transactions=transactions)
 
     def __str__(self):
         data = 'Block #{hash}\n\tCreated at: {timestamp}\n\tPrevious hash: {previous_hash}\n\t'.format(hash=self.hash, timestamp=self.timestamp, previous_hash=self.previous_hash)
@@ -122,21 +109,20 @@ class MoveTransaction(Transaction):
     class TransactionData(Transaction.TransactionData):
         bias: tuple[int, int]
 
-    data: str
+    data: bytes
     actor: str
-    action: str = "move"
+    action: bytes = TransactionsAction.MOVE.value
 
     @classmethod
-    def pack_data(cls, data) -> str:
+    def pack_data(cls, data: tuple[int, int] | TransactionData) -> bytes:
         if isinstance(data, cls.TransactionData):
-            data = asdict(data)
-        elif isinstance(data, tuple):
-            data = asdict(cls.TransactionData(bias=data))
-        return json.dumps(data)
+            data = data.bias
+        return struct.pack('>ii', data[0], data[1])
 
     def unpack_data(self) -> TransactionData:
-        data_state = json.loads(self.data)
-        return self.TransactionData(**data_state)
+        return self.TransactionData(
+            bias=struct.unpack('>ii', self.data)
+        )
 
 
 @dataclass
@@ -144,26 +130,35 @@ class PickTransaction(Transaction):
     @dataclass
     class TransactionData(Transaction.TransactionData):
         pick_position: tuple[int, int]
-        object_id: str
+        object_id: int
 
-    data: str
+    data: bytes
     actor: str
-    action: str = "pick"
+    action: bytes = TransactionsAction.PICK.value
 
     @classmethod
-    def pack_data(cls, data) -> str:
-        if isinstance(data, cls.TransactionData):
-            data = asdict(data)
-        elif isinstance(data, dict):
-            data = asdict(cls.TransactionData(**data))
-        return json.dumps(data)
+    def pack_data(cls, data: TransactionData | tuple[tuple, int]) -> bytes:
+        if isinstance(data, tuple):
+            data = cls.TransactionData(pick_position=data[0], object_id=data[1])
+        object_int_id = UUID(data.object_id).int
+        object_part1 = (object_int_id >> 64) & max_int64
+        object_part2 = object_int_id & max_int64
+
+        return struct.pack('>iiQQ', data.pick_position[0], data.pick_position[1], object_part1, object_part2)
 
     def unpack_data(self) -> TransactionData:
-        data_state = json.loads(self.data)
-        return PickTransaction.TransactionData(**data_state)
+        x, y, object_part1, object_part2 = struct.unpack('>iiQQ', self.data)
+        object_int_id = (object_part1 << 64) | object_part2
+        object_id = str(UUID(int=object_int_id))
+        return PickTransaction.TransactionData(
+            pick_position=(x, y),
+            object_id=object_id
+        )
 
 
 _action_to_transaction_class = {
     TransactionsAction.MOVE: MoveTransaction,
-    TransactionsAction.PICK: PickTransaction
+    TransactionsAction.PICK: PickTransaction,
+    TransactionsAction.MOVE.value: MoveTransaction,
+    TransactionsAction.PICK.value: PickTransaction,
 }

@@ -5,60 +5,13 @@ import time
 from struct import pack, unpack
 from enum import Enum
 import datetime as dt
-from backend.database.models import Block
+from app.backend.database.models import Block
 
 
 class RequestType(Enum):
     get_blocks = b'\00'
     new_block = b'\01'
     new_transaction = b'\02'
-
-
-class Server:
-    def __init__(self, bind_address: tuple):
-        self.socket = socket.socket()
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.socket.bind(bind_address)
-        self.socket.listen(3)
-
-        t = threading.Thread(target=self.accept_connections)
-        t.start()
-
-    @staticmethod
-    def _receive_big(connection, buffer_size=1024) -> bytes:
-        data = b''
-        bs = connection.recv(8)
-        (data_length,) = unpack('>Q', bs)
-        print(f"Receiving {data_length} bytes")
-        while len(data) < data_length:
-            to_read = data_length - len(data)
-            data += connection.recv(buffer_size if to_read > buffer_size else to_read)
-        return data
-
-    @staticmethod
-    def _send_big(connection, data: str | bytes, buffer_size=1024):
-        if not isinstance(data, bytes):
-            data = data.encode()
-        data_length = pack('>Q', len(data))
-        try:
-            connection.sendall(data_length)
-            connection.sendall(data)
-        except (BrokenPipeError, OSError):
-            pass
-
-    def _handle_request(self, request_socket):
-        data = request_socket.recv(1)
-        if not data:
-            return
-        answer = RequestHandler(request_socket, data, self.block_rep).handle()
-        if answer is not None:
-            self._send_big(request_socket, answer)
-
-    def accept_connections(self):
-        while True:
-            client_socket, _ = self.socket.accept()
-            self._handle_request(client_socket)
-            client_socket.close()
 
 
 class NetworkHandler(Server):
@@ -90,7 +43,6 @@ class NetworkHandler(Server):
         self.address_book = self._decode_addresses(dumped_address_book)
         if self.address in self.address_book:
             self.address_book.remove(self.address)
-        print("Address book:", self.address_book)
 
     def _do_request(
             self,
