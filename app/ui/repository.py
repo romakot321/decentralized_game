@@ -1,5 +1,6 @@
 import pygame as pg
 from app.ui.backend_service import BackendService
+from app.ui.sprites import BackgroundTile
 import datetime as dt
 
 
@@ -22,6 +23,10 @@ class UIRepository:
         self.backend_service = backend_service
         
         self._last_action = dt.datetime.now()
+        self.sprites = pg.sprite.Group()
+        for y in range(0, SCREEN_SIZE[1], SCALE):
+            for x in range(0, SCREEN_SIZE[0], SCALE):
+                self.sprites.add(BackgroundTile(coordinates=(x, y)))
 
     def can_do_action(self):
         return (dt.datetime.now() - self._last_action).seconds >= self.COOLDOWN
@@ -77,6 +82,7 @@ class UIRepository:
                         self._last_action = dt.datetime.now()
 
             self.screen.fill((230, 230, 230))
+            self.sprites.draw(self.screen)
 
             self._draw_objects()
             self._draw_actors()
