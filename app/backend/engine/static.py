@@ -1,5 +1,5 @@
 import random
-from uuid import uuid5, NAMESPACE_X500
+from uuid import uuid5, NAMESPACE_DNS
 
 from app.backend.engine.models import StaticObject
 from app.backend.database.models import TransactionsAction
@@ -26,7 +26,7 @@ class StaticObjectRepository:
             self.world.append(
                 StaticObject(
                     position=pos,
-                    object_id=str(uuid5(NAMESPACE_X500, random.randbytes(10)))
+                    object_id=str(uuid5(NAMESPACE_DNS, str(random.randbytes(10))))
                 )
             )
 
