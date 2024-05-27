@@ -10,6 +10,8 @@ class NetworkRepository:
     SEEDER_ADDRESS = os.getenv('SEEDER_ADDRESS', '127.0.0.1:9998').split(':')
     SEEDER_ADDRESS = (SEEDER_ADDRESS[0], int(SEEDER_ADDRESS[1]))
 
+    LOCAL_MODE = int(os.getenv("LOCAL_MODE", '0'))
+
     def __init__(self, socket_service, database_repository,
                  request_factory, response_factory):
         self.socket_service = socket_service
@@ -29,10 +31,14 @@ class NetworkRepository:
             self._last_address_book_update = dt.datetime.now()
 
     def _node_life_cycle(self):
+        if self.LOCAL_MODE:
+            return
         while True:
             self._update_address_book()
 
     def request_get_blocks(self) -> list[Block]:
+        if self.LOCAL_MODE:
+            return []
         request = self.request_factory.make_get_blocks()
         raw_responses = self.socket_service.do_request(request)
         raw_response = max(raw_responses, default=[])
@@ -45,12 +51,16 @@ class NetworkRepository:
         ]
 
     def request_get_address_book(self):
+        if self.LOCAL_MODE:
+            return
         request = self.request_factory.make_get_address_book(body=self.socket_service.bind_address)
         raw_response = self.socket_service.do_request(request, receiver=self.SEEDER_ADDRESS)[0]
         response = self.response_factory.make_get_address_book(raw_response)
         self.socket_service.address_book = response.body
 
     def request_publish_block(self, block: Block):
+        if self.LOCAL_MODE:
+            return
         request = self.request_factory.make_publish_block(body=block)
         self.socket_service.do_request(request)
 

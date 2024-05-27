@@ -1,6 +1,7 @@
 import pygame as pg
 from app.ui.backend_service import BackendService
 from app.ui.sprites import BackgroundTile
+from app.ui.sprites import InventoryPane
 import datetime as dt
 
 
@@ -11,7 +12,7 @@ pg.font.init()
 
 
 class UIRepository:
-    COOLDOWN = 1
+    COOLDOWN = 0.2
 
     def __init__(self, backend_service):
         self.screen = pg.display.set_mode(SCREEN_SIZE)
@@ -24,16 +25,28 @@ class UIRepository:
         
         self._last_action = dt.datetime.now()
         self.sprites = pg.sprite.Group()
-        for y in range(0, SCREEN_SIZE[1], SCALE):
-            for x in range(0, SCREEN_SIZE[0], SCALE):
+        self.ui_sprites = pg.sprite.Group()
+
+        self.init()
+
+    def init(self):
+        for y in range(-(SCREEN_SIZE[1] * 10), SCREEN_SIZE[1] * 10, SCALE):
+            for x in range(-SCREEN_SIZE[0] * 10, SCREEN_SIZE[0] * 10, SCALE):
                 self.sprites.add(BackgroundTile(coordinates=(x, y)))
+        self.ui_sprites.add(InventoryPane(SCREEN_SIZE))
+        self.backend_service.init()
 
     def can_do_action(self):
-        return (dt.datetime.now() - self._last_action).seconds >= self.COOLDOWN
+        return (dt.datetime.now() - self._last_action).microseconds >= self.COOLDOWN * 10 ** 6
 
     def _draw_actors(self):
         positions = self.backend_service.get_actors_positions()
+        my_actor_position = self.backend_service.get_my_actor_position()
+        my_actor_position = (my_actor_position[0] + (SCREEN_SIZE[0] // SCALE // 2),
+                             my_actor_position[1] + (SCREEN_SIZE[1] // SCALE // 2))
         for position in positions.keys():
+            #position = (position[0] - my_actor_position[0], position[1] - my_actor_position[1])
+            position = (my_actor_position[0] - position[0], my_actor_position[1] - position[1])
             self.screen.fill(
                 (255, 0, 0),
                 (
@@ -44,8 +57,12 @@ class UIRepository:
 
     def _draw_objects(self):
         objects = self.backend_service.get_static_objects_positions()
+        my_actor_position = self.backend_service.get_my_actor_position()
+        my_actor_position = (my_actor_position[0] - (SCREEN_SIZE[0] // SCALE // 2),
+                             my_actor_position[1] - (SCREEN_SIZE[1] // SCALE // 2))
         for obj in objects:
             position = obj.position
+            position = (position[0] - my_actor_position[0], position[1] - my_actor_position[1])
             self.screen.fill(
                 (255, 255, 0),
                 (
@@ -61,6 +78,9 @@ class UIRepository:
         pg.draw.rect(self.screen, (0, 71, 171), (0, SCREEN_SIZE[1] - 7, x_size, SCREEN_SIZE[1]))
 
     def _draw_inventory(self):
+        self.ui_sprites.update(self.backend_service)
+        self.ui_sprites.draw(self.screen)
+        return
         items = self.backend_service.get_actor_inventory()
         curr_y = 5
         for item in items:
@@ -82,10 +102,16 @@ class UIRepository:
                         self._last_action = dt.datetime.now()
 
             self.screen.fill((230, 230, 230))
-            self.sprites.draw(self.screen)
+            my_actor_position = self.backend_service.get_my_actor_position()
+            my_actor_position = (my_actor_position[0] + (SCREEN_SIZE[0] // SCALE // 2),
+                                 my_actor_position[1] + (SCREEN_SIZE[1] // SCALE // 2))
+            for sprite in self.sprites:
+                pos = (sprite.rect.x - my_actor_position[0] * SCALE, sprite.rect.y - my_actor_position[1] * SCALE)
+                self.screen.blit(sprite.image, pos)
 
             self._draw_objects()
             self._draw_actors()
+
             self._draw_cooldown()
             self._draw_inventory()
 

@@ -25,3 +25,50 @@ class BackgroundTile(pg.sprite.Sprite):
         self.image = pg.transform.rotate(self.image, random.choice(_grades))
         self.rect = self.image.get_rect(topleft=coordinates)
 
+
+class UISprite(pg.sprite.Sprite):
+    def __init__(self, screen_size, *groups):
+        super().__init__(*groups)
+
+    def update(self, backend_service):
+        pass
+
+
+class InventoryPane(UISprite):
+    def __init__(self, screen_size, *groups):
+        super().__init__(screen_size, *groups)
+        self.image = pg.surface.Surface((screen_size[0] * 0.3, screen_size[1] * 0.08))
+        self.image.set_alpha(220)
+        self.rect = self.image.get_rect(topleft=(screen_size[0] - self.image.get_width(), 0))
+
+        self._item_image_size = (self.image.get_height(),) * 2
+        self._inventory = []
+
+    def _update_inventory(self, backend_service):
+        inventory: list[Collectable] = backend_service.get_actor_inventory()
+        if len(self._inventory) != len(inventory):
+            stored_ids = [i[0].object_id for i in self._inventory]
+            for item in inventory:
+                if item.object_id in stored_ids:
+                    continue
+                self._inventory.append(
+                    (
+                        item,
+                        (
+                            int(item.object_id[:2], 16),
+                            int(item.object_id[2:4], 16),
+                            int(item.object_id[4:6], 16)
+                        )
+                    )
+                )
+
+    def update(self, backend_service):
+        self._update_inventory(backend_service)
+        self.image.fill((20, 20, 20))
+        x = 0
+        for item, item_color in self._inventory:
+            item_image = pg.surface.Surface(self._item_image_size)
+            item_image.fill(item_color)
+            self.image.blit(item_image, (x, 0))
+            x += self._item_image_size[0] + 5
+

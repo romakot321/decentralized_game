@@ -4,6 +4,7 @@ import time
 from enum import Enum
 
 from app.backend.database.models import TransactionsAction
+from app.backend.engine.models import Actor
 
 
 class ActorEvent(Enum):
@@ -28,6 +29,9 @@ class BackendRepository:
 
         self.myactor = None
 
+    def make_actor(self) -> Actor:
+        return self.actor_rep.make()
+
     def get_actors_positions(self) -> dict[tuple[int, int], str]:
         actors_position = {}
         actors = set()
@@ -38,11 +42,14 @@ class BackendRepository:
             actors_position[self.actor_rep.get_position(actor)] = actor
         return actors_position
 
+    def get_actor_position(self, actor_id: str) -> tuple[int, int]:
+        return self.actor_rep.get_position(actor_id)
+
     def get_static_objects_positions(self) -> list[tuple]:
         return self.static_rep.get_many()
 
-    def get_actor_picked(self) -> list[str]:
-        return self.static_rep.get_actor_picked(self.myactor.id)
+    def get_actor_picked(self, actor_id) -> list[str]:
+        return self.static_rep.get_actor_picked(actor_id)
 
     def init(self):
         genesis_block = self.db_rep.make_block(transactions=[])
@@ -51,21 +58,22 @@ class BackendRepository:
         self.net_rep.init()
         self.net_rep.request_get_address_book()
         blocks = self.net_rep.request_get_blocks()
-        self.block_rep.replace_chain(blocks)
+        if blocks:
+            self.block_rep.replace_chain(blocks)
 
-        self.myactor = self.actor_rep.make()
-        new_block = self.db_rep.make_block([
-            self.trans_rep.make(self.myactor.id, ActorEvent.MOVE_RIGHT.value, action=TransactionsAction.MOVE),
-            self.trans_rep.make(self.myactor.id, ActorEvent.MOVE_DOWN.value, action=TransactionsAction.MOVE),
-        ])
-        self.block_rep.store(new_block)
-        self.net_rep.request_publish_block(new_block)
+        #self.myactor = self.actor_rep.make()
+        #new_block = self.db_rep.make_block([
+        #    self.trans_rep.make(self.myactor.id, ActorEvent.MOVE_RIGHT.value, action=TransactionsAction.MOVE),
+        #    self.trans_rep.make(self.myactor.id, ActorEvent.MOVE_DOWN.value, action=TransactionsAction.MOVE),
+        #])
+        #self.block_rep.store(new_block)
+        #self.net_rep.request_publish_block(new_block)
 
         self.static_rep.init()
 
-    def handle_event(self, event: ActorEvent):
+    def handle_event(self, event: ActorEvent, actor_id: str):
         if event in (ActorEvent.MOVE_UP, ActorEvent.MOVE_DOWN, ActorEvent.MOVE_RIGHT, ActorEvent.MOVE_LEFT):
-            self.actor_rep.move(self.myactor.id, event)
+            self.actor_rep.move(actor_id, event)
             block = self.db_rep.generate_block()
             self.block_rep.store(block)
             self.net_rep.request_publish_block(block)
