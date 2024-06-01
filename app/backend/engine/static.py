@@ -98,8 +98,8 @@ class StaticObjectRepository:
             random.seed(self.seed)
         
         txs = []
-        for _ in range(random.randint(3, 7)):
-            pos = (random.randint(0, 10), random.randint(0, 10))
+        for _ in range(random.randint(10, 70)):
+            pos = (random.randint(-10, 50), random.randint(-10, 50))
             self.world.append(
                 StaticObject(
                     position=pos,

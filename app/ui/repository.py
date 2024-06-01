@@ -64,7 +64,11 @@ class UIRepository:
             position = obj.position
             position = (position[0] - my_actor_position[0], position[1] - my_actor_position[1])
             self.screen.fill(
-                (255, 255, 0),
+                (
+                    int(obj.object_id[:2], 16),
+                    int(obj.object_id[2:4], 16),
+                    int(obj.object_id[4:6], 16)
+                ),
                 (
                     (position[0] * SCALE, position[1] * SCALE),
                     (SCALE, SCALE)

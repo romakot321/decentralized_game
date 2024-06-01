@@ -89,7 +89,6 @@ class BackendRepository:
             self.net_rep.request_publish_block(block)
         elif event == ActorEvent.DROP:
             drop_tx = self.static_rep.drop_object(actor_id=actor_id, object_id=kwargs['object_id'])
-            print(drop_tx)
             self.db_rep.store_transaction(drop_tx)
 
     def cmd_handler_thread(self):
