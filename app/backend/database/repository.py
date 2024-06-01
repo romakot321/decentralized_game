@@ -17,9 +17,15 @@ class DatabaseRepository:
             self,
             transaction_id: str = None,
             output_index: int = None,
-            output_lock_script_part: bytes = None
+            output_lock_script_part: bytes = None,
+            output_value: bytes = None
     ) -> list[UTXOs]:
-        return self.tx_service.get_utxos(transaction_id, output_index, output_lock_script_part)
+        return self.tx_service.get_utxos(
+            transaction_id,
+            output_index,
+            output_lock_script_part,
+            output_value
+        )
 
     def make_transaction(self, inputs: list[TXInput], outputs: list[TXOutput]) -> Transaction:
         return self.tx_service.make(inputs=inputs, outputs=outputs)

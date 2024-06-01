@@ -90,7 +90,7 @@ class UIRepository:
 
     def run(self):
         while self.running:
-            self.clock.tick(15)
+            self.clock.tick(30)
 
             for e in pg.event.get():
                 if e.type == pg.QUIT:

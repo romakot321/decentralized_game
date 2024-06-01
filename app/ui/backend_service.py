@@ -37,6 +37,8 @@ class BackendService:
             event = ActorEvent.MOVE_LEFT
         elif key == pg.K_s:
             event = ActorEvent.MOVE_DOWN
+        elif key == pg.K_p:
+            event = ActorEvent.PICK
 
         if event:
             self.back_rep.handle_event(event, self.actor.id)

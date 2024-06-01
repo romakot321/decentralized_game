@@ -23,11 +23,13 @@ class Operation(Enum):
     def operands_size(self, next_byte: bytes) -> list[int]:
         """Get operands size
         Positive - from script
-        Negative - from stack. -1 = top element from stack
+        Negative - from stack or altstack. -1 = top element from stack, -2 from altstack
         String - from transaction
         """
-        if self == Operation.push or self == Operation.push_alt:
+        if self == Operation.push:
             return [1, int.from_bytes(next_byte, 'big')]
+        if self == Operation.push_alt:
+            return [-2]
         if self == Operation.verify_signature:
             return [-1, -1, 'encode']
         if self == Operation.check_equal:
@@ -47,19 +49,26 @@ class ScriptError(Exception):
 
 class ScriptService:
     def __init__(self, script: str, transaction: Transaction, altstack: list = None):
-        """script: str - hex present of script"""
-        self._stack = []
-        self._altstack = [] if altstack is None else altstack
+        """
+        script: str - hex present of script
+        """
+        self._stack = []  # Runtime memory
+        self._altstack = [] if altstack is None else altstack  # Arguments for script
+        # Altstack is being formed from outputs of matched inputs
         self.script = bytes.fromhex(script) if isinstance(script, str) else script
         self.tx = transaction
 
     @classmethod
     def run_transaction(cls, transaction: Transaction, depends: dict[str, Transaction]) -> list[bool]:
         results: list[bool] = []
+        altstack: list[bytes] = []
+        for inp in transaction.inputs:
+            refer_out = depends[inp.tx_id].outputs[inp.output_index]
+            altstack.append(refer_out.value)
         for inp in transaction.inputs:
             refer_out = depends[inp.tx_id].outputs[inp.output_index]
             script = inp.unlock_script + refer_out.lock_script
-            result, altstack = cls(script, depends[inp.tx_id]).run()
+            result = cls(script, depends[inp.tx_id], altstack.copy()).run()
             results.extend(result)
         return results
 
@@ -75,7 +84,7 @@ class ScriptService:
         if cmd.operation == Operation.push:
             self._stack.append(cmd.operands[1])
         elif cmd.operation == Operation.push_alt:
-            self._altstack.append(cmd.operands[1])
+            self._stack.append(cmd.operands[0])
         elif cmd.operation == Operation.check_equal:
             if not cmd.operands[0] == cmd.operands[1]:
                 raise ScriptError("Equal error")
@@ -100,8 +109,10 @@ class ScriptService:
             elif opsize >= 0:
                 operands.append(self.script[operands_index:operands_index + opsize])
                 operands_index += opsize
-            elif opsize < 0:
-                operands.append(self._stack.pop(opsize))
+            elif opsize == -1:
+                operands.append(self._stack.pop(-1))
+            elif opsize == -2:
+                operands.append(self._altstack.pop(-1))
         return operands, operands_index - 1
 
     def _run_script(self):
@@ -113,13 +124,15 @@ class ScriptService:
             cmd = Command(operation=operation, operands=[])
             cmd.operands, i = self.get_command_operands(i + 1, operation)
             self.execute_command(cmd)
-            print(f"Byte {i}:")
-            print(f'\tCommand: {cmd}')
-            print(f'\tStack: {self._stack}')
+            #print(f"Byte {i}:")
+            #print(f'\tCommand: {cmd}')
+            #print(f'\tStack: {self._stack}')
+        if not self._stack:
+            self._stack.append(True)
 
     def run(self):
         self._run_script()
-        return self._stack, self._altstack
+        return self._stack
 
 
 if __name__ == '__main__':

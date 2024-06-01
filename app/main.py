@@ -30,7 +30,7 @@ block_rep = BlockService(db_service)
 db_rep = DatabaseRepository(block_rep, trans_rep)
 
 actor_rep = ActorRepository(db_rep)
-static_rep = StaticObjectRepository(actor_rep, trans_rep, block_rep)
+static_rep = StaticObjectRepository(actor_rep, db_rep)
 
 request_factory = RequestFactory(db_rep)
 response_factory = ResponseFactory(db_rep)

@@ -31,7 +31,8 @@ class TransactionService:
             self,
             transaction_id: str = None,
             output_index: int = None,
-            output_lock_script_part: bytes = None
+            output_lock_script_part: bytes = None,
+            output_value: bytes = None
     ) -> list[UTXOs]:
         """
         :param output_lock_script_part: Check if part in output.lock_script
@@ -43,6 +44,11 @@ class TransactionService:
         if output_lock_script_part is not None:
             utxos_list = filter(
                 lambda i: any(output_lock_script_part in out.lock_script for out in i.transaction.outputs),
+                utxos_list
+            )
+        if output_value is not None:
+            utxos_list = filter(
+                lambda i: any(output_value == out.value for out in i.transaction.outputs),
                 utxos_list
             )
         return list(utxos_list)

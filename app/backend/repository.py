@@ -11,6 +11,7 @@ class ActorEvent(Enum):
     MOVE_RIGHT = (1, 0)
     MOVE_LEFT = (-1, 0)
     MOVE_DOWN = (0, 1)
+    PICK = 0
 
 
 class BackendRepository:
@@ -65,16 +66,26 @@ class BackendRepository:
         #self.block_rep.store(new_block)
         #self.net_rep.request_publish_block(new_block)
 
-        self.static_rep.init()
+        object_txs = self.static_rep.init()
+        for tx in object_txs:
+            self.db_rep.store_transaction(tx)
 
     def handle_event(self, event: ActorEvent, actor_id: str):
         if event in (ActorEvent.MOVE_UP, ActorEvent.MOVE_DOWN, ActorEvent.MOVE_RIGHT, ActorEvent.MOVE_LEFT):
-            self.actor_rep.move(actor_id, event)
+            move_tx = self.actor_rep.make_move(actor_id, event)
+            self.db_rep.store_transaction(move_tx)
             block = self.db_rep.generate_block()
             self.block_rep.store(block)
             self.net_rep.request_publish_block(block)
-
-        self.static_rep.check_collisions()
+        elif event == ActorEvent.PICK:
+            pick_tx = self.static_rep.pick_object(actor_id)
+            if not pick_tx:
+                print("No object found")
+                return
+            self.db_rep.store_transaction(pick_tx)
+            block = self.db_rep.generate_block()
+            self.block_rep.store(block)
+            self.net_rep.request_publish_block(block)
 
     def cmd_handler_thread(self):
         while True:
