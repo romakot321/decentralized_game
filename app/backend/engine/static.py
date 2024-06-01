@@ -63,6 +63,33 @@ class StaticObjectRepository:
         ]
         return self.db_rep.make_transaction(inputs=inputs, outputs=outputs)
 
+    def drop_object(self, object_id: str, actor_id):
+        object_tx = self.find_object_transaction(object_id)
+        if object_tx is None:
+            return
+
+        actor_pos = self.actor_rep.get_position(actor_id)
+        inputs = [
+            self.db_rep.make_transaction_input(
+                tx_id=object_tx.id,
+                output_index=0
+            )
+        ]
+        outputs = [
+            self.db_rep.make_transaction_output(
+                input_index=0,
+                value=object_id.encode(),
+                lock_script=self.make_object_unlock_script(actor_pos)
+            )
+        ]
+        self.world.append(
+            StaticObject(
+                position=actor_pos,
+                object_id=object_id
+            )
+        )
+        return self.db_rep.make_transaction(inputs=inputs, outputs=outputs)
+
     def init(self) -> list[Transaction]:
         """Return list of transactions to save"""
         genesis_block = self.db_rep.block_service.get_many(previous_hash='')

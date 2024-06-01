@@ -27,16 +27,21 @@ class BackgroundTile(pg.sprite.Sprite):
 
 
 class UISprite(pg.sprite.Sprite):
-    def __init__(self, screen_size, *groups):
+    def __init__(self, screen_size, backend_service, *groups):
         super().__init__(*groups)
+        self.screen_size = screen_size
+        self.backend_service = backend_service
 
     def update(self, backend_service):
         pass
 
+    def handle_click(self, click_pos: tuple[int, int]):
+        pass
+
 
 class InventoryPane(UISprite):
-    def __init__(self, screen_size, *groups):
-        super().__init__(screen_size, *groups)
+    def __init__(self, screen_size, backend_service, *groups):
+        super().__init__(screen_size, backend_service, *groups)
         self.image = pg.surface.Surface((screen_size[0] * 0.3, screen_size[1] * 0.08))
         self.image.set_alpha(220)
         self.rect = self.image.get_rect(topleft=(screen_size[0] - self.image.get_width(), 0))
@@ -44,26 +49,34 @@ class InventoryPane(UISprite):
         self._item_image_size = (self.image.get_height(),) * 2
         self._inventory = []
 
-    def _update_inventory(self, backend_service):
-        inventory: list[Collectable] = backend_service.get_actor_inventory()
-        if len(self._inventory) != len(inventory):
-            stored_ids = [i[0].object_id for i in self._inventory]
-            for item in inventory:
-                if item.object_id in stored_ids:
-                    continue
-                self._inventory.append(
-                    (
-                        item,
-                        (
-                            int(item.object_id[:2], 16),
-                            int(item.object_id[2:4], 16),
-                            int(item.object_id[4:6], 16)
-                        )
-                    )
-                )
+    def _update_inventory(self):
+        inventory: list[Collectable] = self.backend_service.get_actor_inventory()
+        if len(self._inventory) == len(inventory):
+            return
 
-    def update(self, backend_service):
-        self._update_inventory(backend_service)
+        stored_ids = [i[0].object_id for i in self._inventory]
+        self._inventory = [
+            (
+                item,
+                (
+                    int(item.object_id[:2], 16),
+                    int(item.object_id[2:4], 16),
+                    int(item.object_id[4:6], 16)
+                )
+            )
+            for item in inventory
+        ]
+        
+    def handle_click(self, click_pos: tuple):
+        x = 0
+        for item, _ in self._inventory:
+            if click_pos[0] in range(x, x + self._item_image_size[0] + 5):
+                self.backend_service.drop_item(item.object_id)
+                break
+            x += self._item_image_size[0] + 5
+
+    def update(self):
+        self._update_inventory()
         self.image.fill((20, 20, 20))
         x = 0
         for item, item_color in self._inventory:

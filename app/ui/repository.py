@@ -33,7 +33,7 @@ class UIRepository:
         for y in range(-(SCREEN_SIZE[1] * 10), SCREEN_SIZE[1] * 10, SCALE):
             for x in range(-SCREEN_SIZE[0] * 10, SCREEN_SIZE[0] * 10, SCALE):
                 self.sprites.add(BackgroundTile(coordinates=(x, y)))
-        self.ui_sprites.add(InventoryPane(SCREEN_SIZE))
+        self.ui_sprites.add(InventoryPane(SCREEN_SIZE, self.backend_service))
         self.backend_service.init()
 
     def can_do_action(self):
@@ -78,15 +78,18 @@ class UIRepository:
         pg.draw.rect(self.screen, (0, 71, 171), (0, SCREEN_SIZE[1] - 7, x_size, SCREEN_SIZE[1]))
 
     def _draw_inventory(self):
-        self.ui_sprites.update(self.backend_service)
+        self.ui_sprites.update()
         self.ui_sprites.draw(self.screen)
-        return
-        items = self.backend_service.get_actor_inventory()
-        curr_y = 5
-        for item in items:
-            text = self.font.render(item, False, (0, 0, 0))
-            self.screen.blit(text, (10, curr_y))
-            curr_y += self.font.get_height() + 5
+
+    def _handle_ui_click(self, click_point: tuple[int, int]):
+        for ui_sprite in self.ui_sprites:
+            if ui_sprite.rect.collidepoint(click_point):
+                ui_sprite.handle_click(
+                    (
+                        click_point[0] - ui_sprite.rect.left,
+                        click_point[1] - ui_sprite.rect.top
+                    )
+                )  # Transform point to ui rect
 
     def run(self):
         while self.running:
@@ -100,6 +103,10 @@ class UIRepository:
                         self.running = False
                     elif self.backend_service.handle_actor_action(e.key):
                         self._last_action = dt.datetime.now()
+                elif e.type == pg.MOUSEBUTTONDOWN:
+                    if e.button == 1:
+                        cursor_pos = pg.mouse.get_pos()
+                        self._handle_ui_click(cursor_pos)
 
             self.screen.fill((230, 230, 230))
             my_actor_position = self.backend_service.get_my_actor_position()

@@ -11,6 +11,9 @@ class BackendService:
     def init(self):
         self.actor = self.back_rep.make_actor()
 
+    def drop_item(self, object_id: str):
+        self.back_rep.handle_event(ActorEvent.DROP, self.actor.id, object_id=object_id)
+
     def get_actors_positions(self):
         return self.back_rep.get_actors_positions()
     

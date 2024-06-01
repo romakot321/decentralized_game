@@ -12,6 +12,7 @@ class ActorEvent(Enum):
     MOVE_LEFT = (-1, 0)
     MOVE_DOWN = (0, 1)
     PICK = 0
+    DROP = 1
 
 
 class BackendRepository:
@@ -70,7 +71,7 @@ class BackendRepository:
         for tx in object_txs:
             self.db_rep.store_transaction(tx)
 
-    def handle_event(self, event: ActorEvent, actor_id: str):
+    def handle_event(self, event: ActorEvent, actor_id: str, **kwargs):
         if event in (ActorEvent.MOVE_UP, ActorEvent.MOVE_DOWN, ActorEvent.MOVE_RIGHT, ActorEvent.MOVE_LEFT):
             move_tx = self.actor_rep.make_move(actor_id, event)
             self.db_rep.store_transaction(move_tx)
@@ -86,6 +87,10 @@ class BackendRepository:
             block = self.db_rep.generate_block()
             self.block_rep.store(block)
             self.net_rep.request_publish_block(block)
+        elif event == ActorEvent.DROP:
+            drop_tx = self.static_rep.drop_object(actor_id=actor_id, object_id=kwargs['object_id'])
+            print(drop_tx)
+            self.db_rep.store_transaction(drop_tx)
 
     def cmd_handler_thread(self):
         while True:
