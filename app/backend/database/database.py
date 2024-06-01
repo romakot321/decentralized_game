@@ -21,7 +21,7 @@ class DatabaseService:
         return model_id
 
     def update(self, model_id, model: StorableModel):
-        pass
+        self.tables[model.table_name][model_id] = model
 
     def get(self, table_name, model_id: int) -> dict | None:
         return self.tables.get(table_name, {}).get(model_id)

@@ -3,7 +3,7 @@ from app.backend.database.models import Tip, Block, Transaction, StorableModel
 import datetime as dt
 
 
-class BlockRepository:
+class BlockService:
     def __init__(self, db_service):
         self.db_service = db_service
 
@@ -27,15 +27,12 @@ class BlockRepository:
         new_block = self.mine(new_block)
         return new_block
 
-    def validate_transaction(self, transaction: Transaction):
-        return True
-
     def validate_block(self, block: Block):
+        """validate block with already validated transaction"""
         tip_block = self.get_last()
         if not tip_block:
             return True
-        return tip_block.hash == block.previous_hash and \
-                all(self.validate_transaction(tr) for tr in block.transactions)
+        return tip_block.hash == block.previous_hash
 
     def store(self, block: Block) -> int | None:
         if not self.validate_block(block):
@@ -48,13 +45,6 @@ class BlockRepository:
         if last_hash:
             return self.get_one(last_hash.value)
 
-    def get_one(self, block_hash) -> Block | None:
-        return self.db_service.get(Block.table_name, block_hash)
-
-    def get_many(self, **filters) -> list[Block]:
-        res = self.db_service.find(Block.table_name, **filters)
-        return res
-
     def iterate_blocks(self, stop_hash: str | None = None) -> Block:
         curr_block = self.get_last()
         if stop_hash is None:
@@ -64,9 +54,16 @@ class BlockRepository:
             yield curr_block
             curr_block = self.get_one(curr_block.previous_hash)
 
-    def replace_chain(self, chain: list[Block]):
+    def get_one(self, block_hash) -> Block | None:
+        return self.db_service.get(Block.table_name, block_hash)
+
+    def get_many(self, **filters) -> list[Block]:
+        res = self.db_service.find(Block.table_name, **filters)
+        return res
+
+    def append_chain(self, new_chain: list[Block]):
         for block in self.get_many():
             self.db_service.delete(Block.table_name, block.hash)
 
-        [self.store(block) for block in chain[::-1]]
+        [self.store(block) for block in new_chain[::-1]]
 

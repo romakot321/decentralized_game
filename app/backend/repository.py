@@ -3,7 +3,6 @@ import threading
 import time
 from enum import Enum
 
-from app.backend.database.models import TransactionsAction
 from app.backend.engine.models import Actor
 
 
@@ -34,12 +33,9 @@ class BackendRepository:
 
     def get_actors_positions(self) -> dict[tuple[int, int], str]:
         actors_position = {}
-        actors = set()
-        for block in self.block_rep.iterate_blocks():
-            for trans in block.transactions:
-                actors.add(trans.actor)
+        actors = self.actor_rep.get_many()
         for actor in actors:
-            actors_position[self.actor_rep.get_position(actor)] = actor
+            actors_position[self.actor_rep.get_position(actor.id)] = actor
         return actors_position
 
     def get_actor_position(self, actor_id: str) -> tuple[int, int]:

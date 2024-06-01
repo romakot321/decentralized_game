@@ -2,8 +2,6 @@ import random
 from uuid import uuid5, NAMESPACE_DNS
 
 from app.backend.engine.models import StaticObject
-from app.backend.database.models import TransactionsAction
-from app.backend.database.models import PickTransaction
 
 
 class StaticObjectRepository:
@@ -35,6 +33,7 @@ class StaticObjectRepository:
         return self.world
 
     def get_actor_picked(self, actor_id) -> list:
+        return []
         objects = set()
         for block in self.block_rep.iterate_blocks():
             for transaction in block.transactions:
@@ -53,6 +52,7 @@ class StaticObjectRepository:
                 return
 
     def check_remove(self):
+        return
         for block in self.block_rep.iterate_blocks():
             for transaction in block.transactions:
                 if transaction.action != TransactionsAction.PICK.value:
@@ -62,6 +62,7 @@ class StaticObjectRepository:
                     self.delete(data.object_id)
 
     def check_collisions(self):
+        return
         for actor in self.actor_rep.get_many():
             pos = self.actor_rep.get_position(actor.id)
             for obj in self.world:
