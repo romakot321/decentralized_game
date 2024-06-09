@@ -1,12 +1,8 @@
-from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
 import datetime as dt
 from hashlib import sha256
-from app.backend.utils import asdict
-import json
-from enum import Enum
-import struct
 from uuid import UUID
+from app.backend.utils import asdict
+from dataclasses import dataclass, field
 
 max_int64 = 0xFFFFFFFFFFFFFFFF
 
@@ -59,6 +55,13 @@ class Transaction(StorableModel):
     @property
     def id(self) -> str:
         return sha256(sha256(self.encode()).digest()).hexdigest()
+
+    @classmethod
+    def from_network_model(cls, model):
+        return Transaction(
+            inputs=[TXInput(**inp.model_dump()) for inp in model.inputs],
+            outputs=[TXOutput(**out.model_dump()) for out in model.outputs]
+        )
 
     def __str__(self):
         return f'Transaction #{self.id}\n\tInputs: {[str(i) for i in self.inputs]}\n\tOutputs: {[str(o) for o in self.outputs]}'

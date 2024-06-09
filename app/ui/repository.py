@@ -12,10 +12,10 @@ pg.font.init()
 
 
 class UIRepository:
-    COOLDOWN = 0.5
+    COOLDOWN = 0.02
 
     def __init__(self, backend_service):
-        self.screen = pg.display.set_mode(SCREEN_SIZE)
+        self.screen = None
         self.running = True
         self.sprites = pg.sprite.Group()
         self.clock = pg.time.Clock()
@@ -35,6 +35,7 @@ class UIRepository:
         )
 
     def init(self):
+        self.screen = pg.display.set_mode(SCREEN_SIZE)
         for y in range(self._chunks_border.top, self._chunks_border.bottom, SCALE):
             for x in range(self._chunks_border.left, self._chunks_border.right, SCALE):
                 chunk_x, chunk_y = x // SCALE // 5, y // SCALE // 5

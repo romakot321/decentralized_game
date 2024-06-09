@@ -122,6 +122,11 @@ class NetworkTransaction(BaseModel):
             i += input_size
         return cls(inputs=inputs, outputs=outputs)
 
+    @classmethod
+    def from_db_model(cls, model):
+        state = asdict(model)
+        return cls(**state)
+
 
 class NetworkBlock(BaseModel):
     timestamp: dt.datetime

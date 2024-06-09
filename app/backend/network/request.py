@@ -5,7 +5,7 @@ from app.backend.network.models import NetworkBlock, NetworkTransaction, Network
 from app.backend.network.models import TransactionsPayload
 
 from app.backend.utils import asdict
-from app.backend.database.models import ValidateError, Block
+from app.backend.database.models import ValidateError, Block, Transaction
 
 import datetime as dt
 
@@ -47,6 +47,7 @@ class RequestWorker:
     def add_transactions(self, request_payload: bytes) -> bool:
         request_payload = TransactionsPayload.decode(request_payload)
         for tx in request_payload.transactions:
+            tx = Transaction.from_network_model(tx)
             try:
                 self.db_rep.store_transaction(tx)
             except ValidateError:

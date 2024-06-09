@@ -6,7 +6,7 @@ from enum import Enum
 from app.backend.engine.models import Actor
 from app.backend.engine.models import Biome
 from app.backend.database.models import Block
-from app.backend.network.models import NetworkBlock
+from app.backend.network.models import NetworkBlock, NetworkTransaction
 from app.backend.utils import asdict
 
 
@@ -74,21 +74,9 @@ class BackendRepository:
             self.db_rep.append_chain(blocks[::-1])
             self.static_rep.init(genesis_block.hash)
         else:
-            genesis_block = self.db_rep.make_block(transactions=[])
-            self.block_rep.store(genesis_block)
-            object_txs = self.static_rep.init(genesis_block.hash)
-            for tx in object_txs:
-                self.db_rep.store_transaction(tx)
-            block = self.db_rep.generate_block()
-            self.block_rep.store(block)
-
-        #self.myactor = self.actor_rep.make()
-        #new_block = self.db_rep.make_block([
-        #    self.trans_rep.make(self.myactor.id, ActorEvent.MOVE_RIGHT.value, action=TransactionsAction.MOVE),
-        #    self.trans_rep.make(self.myactor.id, ActorEvent.MOVE_DOWN.value, action=TransactionsAction.MOVE),
-        #])
-        #self.block_rep.store(new_block)
-        #self.net_rep.request_publish_block(new_block)
+            while len(blocks := list(self.db_rep.iterate_blocks())) == 0:
+                pass
+            genesis_block = next(self.db_rep.iterate_blocks())
         
         print("GENESIS", genesis_block)
         self.world_service.init(int(genesis_block.hash, 16))
@@ -97,27 +85,21 @@ class BackendRepository:
         if event in (ActorEvent.MOVE_UP, ActorEvent.MOVE_DOWN, ActorEvent.MOVE_RIGHT, ActorEvent.MOVE_LEFT):
             move_tx = self.actor_rep.make_move(actor_id, event)
             self.db_rep.store_transaction(move_tx)
-            block = self.db_rep.generate_block()
-            self.block_rep.store(block)
-            block = NetworkBlock.from_db_model(block)
-            self.net_rep.relay_block(block)
+            move_tx = NetworkTransaction.from_db_model(move_tx)
+            self.net_rep.relay_transaction(move_tx)
         elif event == ActorEvent.PICK:
             pick_tx = self.static_rep.pick_object(actor_id)
             if not pick_tx:
                 print("No object found")
                 return
             self.db_rep.store_transaction(pick_tx)
-            block = self.db_rep.generate_block()
-            self.block_rep.store(block)
-            block = NetworkBlock.from_db_model(block)
-            self.net_rep.relay_block(block)
+            pick_tx = NetworkTransaction.from_db_model(pick_tx)
+            self.net_rep.relay_transaction(pick_tx)
         elif event == ActorEvent.DROP:
             drop_tx = self.static_rep.drop_object(actor_id=actor_id, object_id=kwargs['object_id'])
             self.db_rep.store_transaction(drop_tx)
-            block = self.db_rep.generate_block()
-            self.block_rep.store(block)
-            block = NetworkBlock.from_db_model(block)
-            self.net_rep.relay_block(block)
+            drop_tx = NetworkTransaction.from_db_model(drop_tx)
+            self.net_rep.relay_transaction(drop_tx)
 
     def cmd_handler_thread(self):
         while True:
@@ -125,6 +107,18 @@ class BackendRepository:
             if cmd == 'blocks':
                 for block in self.block_rep.iterate_blocks():
                     print(str(block))
+            elif cmd == 'objects':
+                object_txs = self.static_rep.init(next(self.block_rep.iterate_blocks()).hash)
+                for tx in object_txs:
+                    self.db_rep.store_transaction(tx)
+                block = self.db_rep.generate_block()
+                self.db_rep.store_block(block)
+            elif cmd == 'gen':
+                block = self.db_rep.generate_block()
+                print("GENERATED", len(block.transactions), 'transactrions')
+                self.db_rep.store_block(block)
+                block = NetworkBlock.from_db_model(block)
+                self.net_rep.relay_block(block)
             elif cmd == 'inv':
                 print(self.static_rep.get_actor_picked(self.myactor.id))
             event = None

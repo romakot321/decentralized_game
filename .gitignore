@@ -144,3 +144,5 @@ cython_debug/
 # Pycharm
 .idea/
 images/
+db*
+key*

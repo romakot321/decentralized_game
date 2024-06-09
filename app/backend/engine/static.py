@@ -46,6 +46,8 @@ class StaticObjectRepository:
 
     def make_pick_transaction(self, object_id: str, actor_id: str):
         object_tx = self.find_object_transaction(object_id)
+        if object_tx is None:
+            print(self.world, object_id)
         actor_move_tx, actor_move_tx_out = self.actor_rep.get_actor_outputs(actor_id, movement=True)[0]
         inputs = [
             self.db_rep.make_transaction_input(
@@ -160,7 +162,6 @@ class StaticObjectRepository:
                             object_id=out.value.decode()
                         )
                     )
-                    print('add on', pos)
 
     def pick_object(self, actor_id: str) -> Transaction | None:
         actor_pos = self.actor_rep.get_position(actor_id)

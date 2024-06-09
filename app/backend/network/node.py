@@ -59,7 +59,7 @@ class NodeService:
         conn.answer(msg.model_dump())
         response = conn.receive()
         conn.close()
-        if not response:
+        if response is None:
             return
         self.nodes_store.store((str(node.ip), node.port))
         return self._handle_response(response.body)
@@ -68,13 +68,13 @@ class NodeService:
         node = Node(ip=address[0], port=address[1])
         return self._do_request(msg, node)
 
-    def do_broadcast_request(self, msg) -> list[Payload | None]:
+    def do_broadcast_request(self, msg) -> list[Payload]:
         responses = []
         for node in self.nodes_store.get():
             if node == self.sender:
                 continue
             responses.append(self._do_request(msg, node))
-        return responses
+        return [resp for resp in responses if resp is not None]
 
     def store_node(self, node: Node):
         self.nodes_store.store((str(node.ip), node.port))

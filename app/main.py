@@ -29,7 +29,16 @@ BIND_ADDRESS = (BIND_ADDRESS[0], int(BIND_ADDRESS[1]))
 SEEDER_ADDRESS = os.getenv('SEEDER_ADDRESS', '127.0.0.1:8989').split(':')
 SEEDER_ADDRESS = (SEEDER_ADDRESS[0], int(SEEDER_ADDRESS[1]))
 LOCAL_MODE = int(os.getenv('LOCAL_MODE', '0'))
-private_key = Ed25519PrivateKey.generate()
+NODE_ONLY = int(os.getenv('NODE_ONLY', '0'))
+KEY_FILENAME = os.getenv('KEY_FILENAME', 'key')
+
+try:
+    with open(KEY_FILENAME, 'rb') as f:
+        private_key = Ed25519PrivateKey.from_private_bytes(f.read())
+except FileNotFoundError:
+    private_key = Ed25519PrivateKey.generate()
+    with open(KEY_FILENAME, 'wb') as f:
+        f.write(private_key.private_bytes_raw())
 
 db_service = DatabaseService()
 
@@ -62,9 +71,10 @@ ui_rep = UIRepository(backend_service)
 
 
 if __name__ == '__main__':
-    #threading.Thread(target=backend_rep.cmd_handler_thread).start()
+    threading.Thread(target=backend_rep.cmd_handler_thread).start()
 
     backend_rep.init(SEEDER_ADDRESS)
-    ui_rep.init()
-    ui_rep.run()
+    if not NODE_ONLY:
+        ui_rep.init()
+        ui_rep.run()
 

@@ -57,18 +57,35 @@ class DatabaseRepository:
         self.tx_service.store(transaction)
         self.tx_service.create_utxos(transaction)
 
-    def store_block(self, block: Block, validate_transactions: bool = True):
-        if validate_transactions:
-            if not all(self.tx_service.validate(tx) for tx in block.transactions):
+    def _validate_transactions(self, txs: list):
+        for tx in txs:
+            self.tx_service.delete(tx)
+        for tx in txs:
+            if not self.tx_service.validate(tx):
                 raise ValidateError("Invalid transactions in block")
-            for tx in block.transactions:
-                self.tx_service.create_utxos(tx)
+            self.tx_service.create_utxos(tx)
+
+    def store_block(self, block: Block, validate_transactions: bool = True):
+        if validate_transactions and block.transactions:
+            self._validate_transactions(block.transactions)
+            
         block_id = self.block_service.store(block)
         if block_id is None:
             raise ValidateError("Invalid block")
         return block_id
 
     def append_chain(self, blocks: list[Block]):
+        stored = []
+        iterator = self.iterate_blocks()
+        while len(stored) < len(blocks):
+            try:
+                stored.append(next(iterator))
+            except StopIteration:
+                break
+        stored = [bl.hash for bl in stored]
         for block in blocks:
+            if block.hash in stored:
+                continue
+            print("ADD NEW", block.hash)
             self.store_block(block)
 

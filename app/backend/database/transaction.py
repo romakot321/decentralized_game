@@ -62,16 +62,36 @@ class TransactionService:
         )
         self.db_service.save(utxos)
         for inp in tx.inputs:
-            utxos = self.get_utxos(transaction_id=inp.tx_id)
+            utxos_list = self.get_utxos(transaction_id=inp.tx_id)
             if not utxos:
                 continue
-            utxos = utxos[0]
-            utxos.outputs_indexes.remove(inp.output_index)
-            if not utxos.outputs_indexes:
-                self.db_service.delete('utxos', utxos.id)
-            else:
-                self.db_service.update(utxos.id, utxos)
+            for utxos in utxos_list:
+                if inp.output_index not in utxos.outputs_indexes:
+                    continue
+                utxos.outputs_indexes.remove(inp.output_index)
+                if not utxos.outputs_indexes:
+                    self.db_service.delete('utxos', utxos.id)
+                else:
+                    self.db_service.update(utxos.id, utxos)
         return utxos
+
+    def delete_utxos(self, tx: Transaction):
+        """Delete utxos"""
+        utxos_list = self.get_utxos(tx.id)
+        if utxos_list:
+            for utxos in utxos_list:
+                self.db_service.delete('utxos', utxos.id)
+        for inp in tx.inputs:
+            input_tx_block = self.db_service.find('block', subfilters={'transactions': {'id': inp.tx_id}})
+            if not input_tx_block:
+                continue
+            input_tx = [tx for tx in input_tx_block[0].transactions if tx.id == inp.tx_id][0]
+            utxos = UTXOs(
+                transaction_id=input_tx.id,
+                outputs_indexes=[inp.output_index],
+                transaction=input_tx
+            )
+            self.db_service.save(utxos)
 
     def make(
             self,
@@ -118,11 +138,16 @@ class TransactionService:
         for depends_tx_id in ScriptService.get_transaction_depends(tx):
             utxos = self.get_utxos(depends_tx_id)
             if not utxos:
+                print("No available utxos found", depends_tx_id)
                 return False
             utxos = utxos[0]
             depends[depends_tx_id] = utxos.transaction
         results = ScriptService.run_transaction(tx, depends)
         return all(results)
+
+    def delete(self, transaction):
+        if self.db_service.delete('transaction', transaction.id) is not None:
+            self.delete_utxos(transaction)
 
     def store(self, transaction: Transaction):
         if not self.validate(transaction):
@@ -133,6 +158,7 @@ class TransactionService:
         """Clear pool and return cleared transactions"""
         txs = self.db_service.find('transaction')
         for tx in txs:
+            self.delete_utxos(tx)
             self.db_service.delete('transaction', tx.id)
         return txs
 
