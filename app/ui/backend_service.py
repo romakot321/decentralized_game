@@ -23,6 +23,9 @@ class BackendService:
     def get_static_objects_positions(self):
         return self.back_rep.get_static_objects_positions()
 
+    def get_chunk_info(self, chunk_x, chunk_y):
+        return self.back_rep.get_chunk_info(chunk_x, chunk_y)
+
     def get_actor_inventory(self) -> list[Collectable]:
         items = self.back_rep.get_actor_picked(self.actor.id)
         return [

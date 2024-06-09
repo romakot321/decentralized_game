@@ -17,15 +17,22 @@ class StaticObjectRepository:
 
     def make_object_unlock_script(self, position: tuple[int, int]) -> bytes:
         position_encoded = ';'.join(map(str, position)).encode()
-        script = Operation.push.value + len(position_encoded).to_bytes() + position_encoded
+        script = Operation.push.value + len(position_encoded).to_bytes(8) + position_encoded
         script += Operation.push_alt.value
         script += Operation.check_equal.value
         return script
 
+    def get_object_position_from_script(self, script: bytes) -> tuple[int, int]:
+        pos_length = script[len(Operation.push.value):len(Operation.push.value) + 8]
+        pos_length = int.from_bytes(pos_length)
+        pos = script[len(Operation.push.value) + 8:len(Operation.push.value) + 8 + pos_length]
+        pos = pos.split(b';')
+        return int(pos[0]), int(pos[1])
+
     def make_object_transaction(self, obj: StaticObject) -> Transaction:
         outputs = [
             self.db_rep.make_transaction_output(
-                input_index=-1,
+                input_index=0,
                 value=obj.object_id.encode(),
                 lock_script=self.make_object_unlock_script(obj.position)
             )
@@ -90,11 +97,10 @@ class StaticObjectRepository:
         )
         return self.db_rep.make_transaction(inputs=inputs, outputs=outputs)
 
-    def init(self) -> list[Transaction]:
+    def init(self, seed=None) -> list[Transaction]:
         """Return list of transactions to save"""
-        genesis_block = self.db_rep.block_service.get_many(previous_hash='')
-        if genesis_block:
-            self.seed = genesis_block[0].hash
+        if seed:
+            self.seed = seed
             random.seed(self.seed)
         
         txs = []
@@ -111,6 +117,7 @@ class StaticObjectRepository:
 
     def get_many(self):
         self.check_remove()
+        self.check_new()
         return self.world
 
     def get_actor_picked(self, actor_id) -> list[str]:
@@ -138,6 +145,22 @@ class StaticObjectRepository:
                         and len(utxos.transaction.outputs) != 1:
                     self.delete(out.value.decode())
                     break
+
+    def check_new(self):
+        for utxos in self.db_rep.find_utxos():
+            for out in utxos.transaction.outputs:
+                if out.value in [o.object_id.encode() for o in self.world] \
+                        or len(utxos.transaction.outputs) != 1:
+                    continue
+                if out.value.count(b'-') == 4 and len(out.value) == 36:
+                    pos = self.get_object_position_from_script(out.lock_script)
+                    self.world.append(
+                        StaticObject(
+                            position=pos,
+                            object_id=out.value.decode()
+                        )
+                    )
+                    print('add on', pos)
 
     def pick_object(self, actor_id: str) -> Transaction | None:
         actor_pos = self.actor_rep.get_position(actor_id)

@@ -1,66 +1,77 @@
-import os
-import datetime as dt
-from app.backend.database.models import Block
-from app.backend.utils import asdict
-
-import threading
+from app.backend.network.models import Message, Command
+from app.backend.network.models import GetBlocksPayload, BlocksPayload
+from app.backend.network.models import TransactionsPayload
+from app.backend.network.models import NetworkBlock, NetworkTransaction
 
 
 class NetworkRepository:
-    SEEDER_ADDRESS = os.getenv('SEEDER_ADDRESS', '127.0.0.1:9998').split(':')
-    SEEDER_ADDRESS = (SEEDER_ADDRESS[0], int(SEEDER_ADDRESS[1]))
-
-    LOCAL_MODE = int(os.getenv("LOCAL_MODE", '0'))
-
-    def __init__(self, socket_service, database_repository,
-                 request_factory, response_factory):
-        self.socket_service = socket_service
-        self.request_factory = request_factory
-        self.response_factory = response_factory
-        self.db_rep = database_repository
-
-        self._last_address_book_update = dt.datetime.now() - dt.timedelta(seconds=10)
+    def __init__(self, node_service):
+        self.node_service = node_service
 
     def init(self):
-        self.socket_service.init()
-        threading.Thread(target=self._node_life_cycle).start()
+        self.node_service.init()
 
-    def _update_address_book(self):
-        if (dt.datetime.now() - self._last_address_book_update).seconds >= 10:
-            self.request_get_address_book()
-            self._last_address_book_update = dt.datetime.now()
-
-    def _node_life_cycle(self):
-        if self.LOCAL_MODE:
+    def update_nodes_store(self, seeder_address: tuple):
+        msg = self.node_service.make_message(command=Command.get_nodes_store)
+        response = self.node_service.do_direct_request(msg, seeder_address)
+        if not response:
             return
-        while True:
-            self._update_address_book()
+        for node in response.nodes:
+            self.node_service.store_node(node)
+        return response
 
-    def request_get_blocks(self) -> list[Block]:
-        if self.LOCAL_MODE:
-            return []
-        request = self.request_factory.make_get_blocks()
-        raw_responses = self.socket_service.do_request(request)
-        raw_response = max(raw_responses, default=[])
-        if not raw_response:
-            return []
-        response = self.response_factory.make_get_blocks(raw_response)
-        return [
-            self.db_rep.make_block(**asdict(net_block))
-            for net_block in response.body
-        ]
+    def request_blocks(self) -> list[list[NetworkBlock]]:
+        msg = self.node_service.make_message(
+            command=Command.get_blocks,
+            payload=GetBlocksPayload().encode()
+        )
+        responses = self.node_service.do_broadcast_request(msg)
+        return [resp.blocks for resp in responses]
 
-    def request_get_address_book(self):
-        if self.LOCAL_MODE:
-            return
-        request = self.request_factory.make_get_address_book(body=self.socket_service.bind_address)
-        raw_response = self.socket_service.do_request(request, receiver=self.SEEDER_ADDRESS)[0]
-        response = self.response_factory.make_get_address_book(raw_response)
-        self.socket_service.address_book = response.body
+    def relay_block(self, block: NetworkBlock) -> list[Message]:
+        msg = self.node_service.make_message(
+            command=Command.blocks,
+            payload=BlocksPayload(blocks=[block]).encode()
+        )
+        responses = self.node_service.do_broadcast_request(msg)
+        return responses
 
-    def request_publish_block(self, block: Block):
-        if self.LOCAL_MODE:
-            return
-        request = self.request_factory.make_publish_block(body=block)
-        self.socket_service.do_request(request)
+    def relay_transaction(self, transaction: NetworkTransaction) -> list[Message]:
+        msg = self.node_service.make_message(
+            command=Command.transactions,
+            payload=TransactionsPayload(transactions=[transaction]).encode()
+        )
+        responses = self.node_service.do_broadcast_request(msg)
+        return responses
 
+
+if __name__ == '__main__':
+    from app.backend.network.node import NodeService
+    from app.backend.network.request import RequestWorker
+    from app.backend.network.response import ResponseWorker
+    from app.backend.network.store import NodesStore
+
+    ns1 = NodesStore()
+    r1 = NetworkRepository(
+        NodeService(
+            bind_address=('127.0.0.1', 10000),
+            nodes_store=ns1,
+            request_worker=RequestWorker(None, ns1),
+            response_worker=ResponseWorker()
+        )
+    )
+    ns2 = NodesStore()
+    r2 = NetworkRepository(
+        NodeService(
+            bind_address=('127.0.0.1', 10001),
+            nodes_store=ns2,
+            request_worker=RequestWorker(None, ns2),
+            response_worker=ResponseWorker()
+        )
+    )
+    r1.init()
+    r2.init()
+
+    r1.update_nodes_store(r2.node_service.bind_address)
+    r1.relay_block(r1.node_service.request_worker._blocks[0])
+    r1.relay_transaction(r1.node_service.request_worker._blocks[0].transactions[0])

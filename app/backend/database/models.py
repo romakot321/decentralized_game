@@ -30,9 +30,12 @@ class StorableModel:
 
 @dataclass
 class TXInput:
-    tx_id: int
+    tx_id: str
     output_index: int
     unlock_script: bytes
+
+    def __str__(self):
+        return f'Input. TX id={self.tx_id} Output={self.output_index}'
 
 
 @dataclass
@@ -40,6 +43,9 @@ class TXOutput:
     input_index: int
     lock_script: bytes
     value: bytes
+
+    def __str__(self):
+        return f'Output. Input={self.input_index} Value={self.value}'
 
 
 @dataclass
@@ -53,6 +59,9 @@ class Transaction(StorableModel):
     @property
     def id(self) -> str:
         return sha256(sha256(self.encode()).digest()).hexdigest()
+
+    def __str__(self):
+        return f'Transaction #{self.id}\n\tInputs: {[str(i) for i in self.inputs]}\n\tOutputs: {[str(o) for o in self.outputs]}'
 
 
 @dataclass
@@ -91,6 +100,23 @@ class Block(_BlockParent):
     @property
     def id(self):
         return self.hash
+
+    @classmethod
+    def from_network_model(cls, model):
+        txs = []
+        for tx in model.transactions:
+            tx = Transaction(
+                inputs=[TXInput(**inp.model_dump()) for inp in tx.inputs],
+                outputs=[TXOutput(**out.model_dump()) for out in tx.outputs]
+            )
+            txs.append(tx)
+        prev_hash = '' if model.prev_hash == '\x00' * 64 else model.prev_hash
+        return cls(
+            transactions=txs,
+            previous_hash=prev_hash,
+            timestamp=model.timestamp,
+            nounce=model.nounce
+        )
 
     def __str__(self):
         data = 'Block #{hash}\n\tCreated at: {timestamp}\n\tPrevious hash: {previous_hash}\n\t'.format(hash=self.hash, timestamp=self.timestamp, previous_hash=self.previous_hash)

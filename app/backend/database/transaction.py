@@ -78,6 +78,8 @@ class TransactionService:
             inputs: list[TXInput],
             outputs: list[TXOutput]
     ) -> Transaction:
+        inputs = [(TXInput(**inp) if isinstance(inp, dict) else inp) for inp in inputs]
+        outputs = [(TXOutput(**out) if isinstance(out, dict) else out) for out in outputs]
         return Transaction(inputs=inputs, outputs=outputs)
 
     def make_input(self, tx_id, output_index, unlock_script: bytes = None) -> TXInput:
@@ -89,8 +91,8 @@ class TransactionService:
             utxos = utxos[0]
             signature = self.private_key.sign(utxos.transaction.encode())
             raw_public_key = self.public_key.public_bytes_raw()
-            unlock_script = Operation.push.value + len(signature).to_bytes() + signature
-            unlock_script += Operation.push.value + len(raw_public_key).to_bytes() + raw_public_key
+            unlock_script = Operation.push.value + len(signature).to_bytes(8) + signature
+            unlock_script += Operation.push.value + len(raw_public_key).to_bytes(8) + raw_public_key
         return TXInput(
             tx_id=tx_id,
             output_index=output_index,
@@ -102,7 +104,7 @@ class TransactionService:
         if lock_script is None:
             lock_script = Operation.duplicate_top.value
             lock_script += Operation.hash_top.value
-            lock_script += Operation.push.value + len(self.address).to_bytes() + self.address
+            lock_script += Operation.push.value + len(self.address).to_bytes(8) + self.address
             lock_script += Operation.check_equal.value
             lock_script += Operation.verify_signature.value
         return TXOutput(
@@ -114,7 +116,10 @@ class TransactionService:
     def validate(self, tx: Transaction) -> bool:
         depends = {}
         for depends_tx_id in ScriptService.get_transaction_depends(tx):
-            utxos = self.get_utxos(depends_tx_id)[0]
+            utxos = self.get_utxos(depends_tx_id)
+            if not utxos:
+                return False
+            utxos = utxos[0]
             depends[depends_tx_id] = utxos.transaction
         results = ScriptService.run_transaction(tx, depends)
         return all(results)

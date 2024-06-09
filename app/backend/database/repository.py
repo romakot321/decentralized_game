@@ -58,11 +58,17 @@ class DatabaseRepository:
         self.tx_service.create_utxos(transaction)
 
     def store_block(self, block: Block, validate_transactions: bool = True):
-        if validate_transactions \
-                and not all(self.tx_service.validate(tx) for tx in block.transactions):
-            raise ValidateError("Invalid transactions in block")
+        if validate_transactions:
+            if not all(self.tx_service.validate(tx) for tx in block.transactions):
+                raise ValidateError("Invalid transactions in block")
+            for tx in block.transactions:
+                self.tx_service.create_utxos(tx)
         block_id = self.block_service.store(block)
         if block_id is None:
             raise ValidateError("Invalid block")
         return block_id
+
+    def append_chain(self, blocks: list[Block]):
+        for block in blocks:
+            self.store_block(block)
 

@@ -5,14 +5,14 @@ from app.ui.sprites import InventoryPane
 import datetime as dt
 
 
-SCREEN_SIZE = (500, 500)
+SCREEN_SIZE = (550, 550)
 SCALE = 50
 pg.init()
 pg.font.init()
 
 
 class UIRepository:
-    COOLDOWN = 0.2
+    COOLDOWN = 0.5
 
     def __init__(self, backend_service):
         self.screen = pg.display.set_mode(SCREEN_SIZE)
@@ -27,14 +27,66 @@ class UIRepository:
         self.sprites = pg.sprite.Group()
         self.ui_sprites = pg.sprite.Group()
 
-        self.init()
+        self._chunks_border = pg.rect.Rect(
+            -SCREEN_SIZE[0] * 5,
+            -SCREEN_SIZE[1] * 5,
+            SCREEN_SIZE[0] * 10,
+            SCREEN_SIZE[1] * 10
+        )
 
     def init(self):
-        for y in range(-(SCREEN_SIZE[1] * 10), SCREEN_SIZE[1] * 10, SCALE):
-            for x in range(-SCREEN_SIZE[0] * 10, SCREEN_SIZE[0] * 10, SCALE):
-                self.sprites.add(BackgroundTile(coordinates=(x, y)))
+        for y in range(self._chunks_border.top, self._chunks_border.bottom, SCALE):
+            for x in range(self._chunks_border.left, self._chunks_border.right, SCALE):
+                chunk_x, chunk_y = x // SCALE // 5, y // SCALE // 5
+                biome = self.backend_service.get_chunk_info(chunk_x, chunk_y)
+                self.sprites.add(BackgroundTile(coordinates=(x, y), biome=biome))
         self.ui_sprites.add(InventoryPane(SCREEN_SIZE, self.backend_service))
         self.backend_service.init()
+
+    def generate_chunks(self, left=False, right=False, top=False, bottom=False):
+        expand_bias = 5 * SCALE
+        if top:
+            for y in range(self._chunks_border.top - expand_bias, self._chunks_border.top, SCALE):
+                for x in range(self._chunks_border.left - expand_bias, self._chunks_border.right + expand_bias, SCALE):
+                    chunk_x, chunk_y = x // SCALE // 5, y // SCALE // 5
+                    biome = self.backend_service.get_chunk_info(chunk_x, chunk_y)
+                    self.sprites.add(BackgroundTile(coordinates=(x, y), biome=biome))
+            for obj in self.sprites.sprites():
+                if obj.rect.y in range(self._chunks_border.bottom - expand_bias, self._chunks_border.bottom, SCALE):
+                    self.sprites.remove(obj)
+        if left:
+            for y in range(self._chunks_border.top, self._chunks_border.bottom, SCALE):
+                for x in range(self._chunks_border.left - expand_bias, self._chunks_border.left, SCALE):
+                    chunk_x, chunk_y = x // SCALE // 5, y // SCALE // 5
+                    biome = self.backend_service.get_chunk_info(chunk_x, chunk_y)
+                    self.sprites.add(BackgroundTile(coordinates=(x, y), biome=biome))
+            for obj in self.sprites.sprites():
+                if obj.rect.x in range(self._chunks_border.right - expand_bias, self._chunks_border.right, SCALE):
+                    self.sprites.remove(obj)
+        if right:
+            for y in range(self._chunks_border.top, self._chunks_border.bottom, SCALE):
+                for x in range(self._chunks_border.right, self._chunks_border.right + expand_bias, SCALE):
+                    chunk_x, chunk_y = x // SCALE // 5, y // SCALE // 5
+                    biome = self.backend_service.get_chunk_info(chunk_x, chunk_y)
+                    self.sprites.add(BackgroundTile(coordinates=(x, y), biome=biome))
+            for obj in self.sprites.sprites():
+                if obj.rect.x in range(self._chunks_border.left, self._chunks_border.left + expand_bias, SCALE):
+                    self.sprites.remove(obj)
+        if bottom:
+            for y in range(self._chunks_border.bottom, self._chunks_border.bottom + expand_bias, SCALE):
+                for x in range(self._chunks_border.left - expand_bias, self._chunks_border.right + expand_bias, SCALE):
+                    chunk_x, chunk_y = x // SCALE // 5, y // SCALE // 5
+                    biome = self.backend_service.get_chunk_info(chunk_x, chunk_y)
+                    self.sprites.add(BackgroundTile(coordinates=(x, y), biome=biome))
+            for obj in self.sprites.sprites():
+                if obj.rect.y in range(self._chunks_border.top, self._chunks_border.top + expand_bias, SCALE):
+                    self.sprites.remove(obj)
+        self._chunks_border = pg.rect.Rect(
+            self._chunks_border.left - expand_bias * left + expand_bias * right,
+            self._chunks_border.top - expand_bias * top + expand_bias * bottom,
+            self._chunks_border.width,
+            self._chunks_border.height
+        )
 
     def can_do_action(self):
         return (dt.datetime.now() - self._last_action).microseconds >= self.COOLDOWN * 10 ** 6
@@ -42,11 +94,10 @@ class UIRepository:
     def _draw_actors(self):
         positions = self.backend_service.get_actors_positions()
         my_actor_position = self.backend_service.get_my_actor_position()
-        my_actor_position = (my_actor_position[0] + (SCREEN_SIZE[0] // SCALE // 2),
-                             my_actor_position[1] + (SCREEN_SIZE[1] // SCALE // 2))
+        my_actor_position = (my_actor_position[0] - (SCREEN_SIZE[0] // SCALE // 2),
+                             my_actor_position[1] - (SCREEN_SIZE[1] // SCALE // 2))
         for position in positions.keys():
-            #position = (position[0] - my_actor_position[0], position[1] - my_actor_position[1])
-            position = (my_actor_position[0] - position[0], my_actor_position[1] - position[1])
+            position = (position[0] - my_actor_position[0], position[1] - my_actor_position[1])
             self.screen.fill(
                 (255, 0, 0),
                 (
@@ -96,28 +147,44 @@ class UIRepository:
                 )  # Transform point to ui rect
 
     def run(self):
+        key_down = None
         while self.running:
-            self.clock.tick(30)
+            self.clock.tick(20)
 
             for e in pg.event.get():
                 if e.type == pg.QUIT:
                     self.running = False
-                elif e.type == pg.KEYUP and self.can_do_action():
+                elif e.type == pg.KEYDOWN:
                     if e.key == pg.K_ESCAPE:
                         self.running = False
-                    elif self.backend_service.handle_actor_action(e.key):
-                        self._last_action = dt.datetime.now()
+                    else:
+                        key_down = e.key
+                elif e.type == pg.KEYUP:
+                    if e.key == key_down:
+                        key_down = None
                 elif e.type == pg.MOUSEBUTTONDOWN:
                     if e.button == 1:
                         cursor_pos = pg.mouse.get_pos()
                         self._handle_ui_click(cursor_pos)
+            if key_down and self.can_do_action():
+                if self.backend_service.handle_actor_action(key_down):
+                    self._last_action = dt.datetime.now()
 
             self.screen.fill((230, 230, 230))
             my_actor_position = self.backend_service.get_my_actor_position()
             my_actor_position = (my_actor_position[0] + (SCREEN_SIZE[0] // SCALE // 2),
                                  my_actor_position[1] + (SCREEN_SIZE[1] // SCALE // 2))
+            my_actor_position = (my_actor_position[0] * SCALE, my_actor_position[1] * SCALE)
+            if my_actor_position[0] < self._chunks_border.left:
+                self.generate_chunks(left=True)
+            if my_actor_position[0] > self._chunks_border.right - SCREEN_SIZE[0]:
+                self.generate_chunks(right=True)
+            if my_actor_position[1] > self._chunks_border.bottom - SCREEN_SIZE[1]:
+                self.generate_chunks(bottom=True)
+            if my_actor_position[1] < self._chunks_border.top:
+                self.generate_chunks(top=True)
             for sprite in self.sprites:
-                pos = (sprite.rect.x - my_actor_position[0] * SCALE, sprite.rect.y - my_actor_position[1] * SCALE)
+                pos = (sprite.rect.x - my_actor_position[0], sprite.rect.y - my_actor_position[1])
                 self.screen.blit(sprite.image, pos)
 
             self._draw_objects()

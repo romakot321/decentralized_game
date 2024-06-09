@@ -20,14 +20,14 @@ class Operation(Enum):
             if attr.value == byte:
                 return attr
 
-    def operands_size(self, next_byte: bytes) -> list[int]:
+    def operands_size(self, next_bytes: bytes) -> list[int]:
         """Get operands size
         Positive - from script
         Negative - from stack or altstack. -1 = top element from stack, -2 from altstack
         String - from transaction
         """
         if self == Operation.push:
-            return [1, int.from_bytes(next_byte, 'big')]
+            return [8, int.from_bytes(next_bytes[:8], 'big')]
         if self == Operation.push_alt:
             return [-2]
         if self == Operation.verify_signature:
@@ -100,7 +100,7 @@ class ScriptService:
 
     def get_command_operands(self, operands_index: int, operation: Operation) -> tuple[list, int]:
         operands = []
-        for opsize in operation.operands_size(self.script[operands_index:operands_index + 1]):
+        for opsize in operation.operands_size(self.script[operands_index:]):
             if isinstance(opsize, str):
                 op = getattr(self.tx, opsize)
                 if callable(op):

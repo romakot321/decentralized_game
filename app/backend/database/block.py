@@ -66,4 +66,5 @@ class BlockService:
             self.db_service.delete(Block.table_name, block.hash)
 
         [self.store(block) for block in new_chain[::-1]]
+        print('chain', *new_chain, sep='\n')
 

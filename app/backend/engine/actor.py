@@ -31,13 +31,20 @@ class ActorRepository:
                     txs.append((utxos.transaction, out_index))
         return txs
 
-    def get_actor_outputs(self, actor_id, movement: bool = False) -> list[tuple]:
+    def get_actor_outputs(
+            self,
+            actor_id,
+            movement: bool = False,
+            pick: bool = False
+    ) -> list[tuple]:
         """Return list of (Transaction, output)"""
         outputs = []
         txs = self.get_actor_unspent_transactions(actor_id)
         for tx, out_index in txs:
             out = tx.outputs[out_index]
             if movement and b';' in out.value:
+                outputs.append((tx, out))
+            if pick and out.value.count(b'-') == 4:
                 outputs.append((tx, out))
         return outputs
 
@@ -70,13 +77,12 @@ class ActorRepository:
         return self._pos_cache.get(actor_id)
 
     def get_many(self) -> list[Actor]:
-        return [Actor(id=self.actor_id)]
         actors = set()
-        for block in self.block_rep.iterate_blocks(stop_hash=self._actors_cache[0]):
-            for trans in block.transactions:
-                actors.add(trans.actor)
-        actors |= self._actors_cache[1]
-        self._actors_cache = (self.block_rep.get_last().previous_hash, actors)
+        utxos_list = self.db_rep.find_utxos()
+        for utxos in utxos_list:
+            for out_index in utxos.outputs_indexes:
+                if b';' in utxos.transaction.outputs[out_index].value:
+                    actors.add(utxos.transaction.outputs[out_index].lock_script)
         return [Actor(id=i) for i in actors]
 
     def get_position(self, actor_id) -> tuple[int, int]:

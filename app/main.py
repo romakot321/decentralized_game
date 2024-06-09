@@ -1,14 +1,19 @@
 from app.backend.database.block import BlockService
 from app.backend.database.database import DatabaseService
 from app.backend.database.transaction import TransactionService
+from app.backend.database.repository import DatabaseRepository
+
 from app.backend.engine.actor import ActorRepository, MoveDirections
 from app.backend.engine.static import StaticObjectRepository
+from app.backend.engine.world import WorldService
+
 from app.backend.network.repository import NetworkRepository
-from app.backend.network.socket_service import SocketService
-from app.backend.network.request_factory import RequestFactory
-from app.backend.network.response_factory import ResponseFactory
+from app.backend.network.request import RequestWorker
+from app.backend.network.response import ResponseWorker
+from app.backend.network.node import NodeService
+from app.backend.network.store import NodesStore
+
 from app.backend.repository import BackendRepository
-from app.backend.database.repository import DatabaseRepository
 
 from app.ui.repository import UIRepository
 from app.ui.backend_service import BackendService
@@ -21,6 +26,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 BIND_ADDRESS = os.getenv('BIND_ADDRESS', '127.0.0.1:8989').split(':')
 BIND_ADDRESS = (BIND_ADDRESS[0], int(BIND_ADDRESS[1]))
+SEEDER_ADDRESS = os.getenv('SEEDER_ADDRESS', '127.0.0.1:8989').split(':')
+SEEDER_ADDRESS = (SEEDER_ADDRESS[0], int(SEEDER_ADDRESS[1]))
+LOCAL_MODE = int(os.getenv('LOCAL_MODE', '0'))
 private_key = Ed25519PrivateKey.generate()
 
 db_service = DatabaseService()
@@ -31,13 +39,23 @@ db_rep = DatabaseRepository(block_rep, trans_rep)
 
 actor_rep = ActorRepository(db_rep)
 static_rep = StaticObjectRepository(actor_rep, db_rep)
+world_service = WorldService(world_size=50)
 
-request_factory = RequestFactory(db_rep)
-response_factory = ResponseFactory(db_rep)
-socket_service = SocketService(BIND_ADDRESS, response_factory, request_factory)
-net_rep = NetworkRepository(socket_service, db_rep, request_factory, response_factory)
+if not LOCAL_MODE:
+    response_worker = ResponseWorker()
+    nodes_store = NodesStore()
+    request_worker = RequestWorker(db_rep, nodes_store)
+    node_service = NodeService(BIND_ADDRESS, nodes_store, request_worker, response_worker)
+    net_rep = NetworkRepository(node_service)
+else:
+    class NetRep:
+        def __getattr__(self, *args, **kwargs):
+            return self
+        def __call__(self, *args, **kwargs):
+            return []
+    net_rep = NetRep()
 
-backend_rep = BackendRepository(db_service, block_rep, actor_rep, net_rep, trans_rep, static_rep, db_rep)
+backend_rep = BackendRepository(db_service, block_rep, actor_rep, net_rep, trans_rep, static_rep, db_rep, world_service)
 
 backend_service = BackendService(backend_rep)
 ui_rep = UIRepository(backend_service)
@@ -46,6 +64,7 @@ ui_rep = UIRepository(backend_service)
 if __name__ == '__main__':
     #threading.Thread(target=backend_rep.cmd_handler_thread).start()
 
-    backend_rep.init()
+    backend_rep.init(SEEDER_ADDRESS)
+    ui_rep.init()
     ui_rep.run()
 

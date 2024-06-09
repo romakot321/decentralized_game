@@ -4,6 +4,10 @@ import time
 from enum import Enum
 
 from app.backend.engine.models import Actor
+from app.backend.engine.models import Biome
+from app.backend.database.models import Block
+from app.backend.network.models import NetworkBlock
+from app.backend.utils import asdict
 
 
 class ActorEvent(Enum):
@@ -19,7 +23,7 @@ class BackendRepository:
     def __init__(self, db_service, block_repository,
                  actor_repository, network_repository,
                  transaction_repository, static_object_repository,
-                 database_repository):
+                 database_repository, world_service):
         self.db_service = db_service
         self.block_rep = block_repository
         self.actor_rep = actor_repository
@@ -27,6 +31,7 @@ class BackendRepository:
         self.trans_rep = transaction_repository
         self.static_rep = static_object_repository
         self.db_rep = database_repository
+        self.world_service = world_service
 
         self.myactor = None
 
@@ -49,15 +54,33 @@ class BackendRepository:
     def get_actor_picked(self, actor_id) -> list[str]:
         return self.static_rep.get_actor_picked(actor_id)
 
-    def init(self):
-        genesis_block = self.db_rep.make_block(transactions=[])
-        self.block_rep.store(genesis_block)
+    def get_chunk_info(self, chunk_x, chunk_y) -> Biome:
+        chunk = self.world_service.get_chunk_biome(chunk_x, chunk_y)
+        while chunk is None:
+            self.world_service.generate_new()
+            chunk = self.world_service.get_chunk_biome(chunk_x, chunk_y)
+        return chunk
 
+    def init(self, seeder_address: tuple):
         self.net_rep.init()
-        self.net_rep.request_get_address_book()
-        blocks = self.net_rep.request_get_blocks()
-        if blocks:
-            self.block_rep.replace_chain(blocks)
+        self.net_rep.update_nodes_store(seeder_address)
+        blocks = self.net_rep.request_blocks()
+        if any(blocks):
+            blocks = max(blocks, key=len)
+            for i in range(len(blocks) - 1, -1, -1):
+                blocks[i] = Block.from_network_model(blocks[i])
+            genesis_block = blocks[-1]
+            assert genesis_block.previous_hash == ''
+            self.db_rep.append_chain(blocks[::-1])
+            self.static_rep.init(genesis_block.hash)
+        else:
+            genesis_block = self.db_rep.make_block(transactions=[])
+            self.block_rep.store(genesis_block)
+            object_txs = self.static_rep.init(genesis_block.hash)
+            for tx in object_txs:
+                self.db_rep.store_transaction(tx)
+            block = self.db_rep.generate_block()
+            self.block_rep.store(block)
 
         #self.myactor = self.actor_rep.make()
         #new_block = self.db_rep.make_block([
@@ -66,10 +89,9 @@ class BackendRepository:
         #])
         #self.block_rep.store(new_block)
         #self.net_rep.request_publish_block(new_block)
-
-        object_txs = self.static_rep.init()
-        for tx in object_txs:
-            self.db_rep.store_transaction(tx)
+        
+        print("GENESIS", genesis_block)
+        self.world_service.init(int(genesis_block.hash, 16))
 
     def handle_event(self, event: ActorEvent, actor_id: str, **kwargs):
         if event in (ActorEvent.MOVE_UP, ActorEvent.MOVE_DOWN, ActorEvent.MOVE_RIGHT, ActorEvent.MOVE_LEFT):
@@ -77,7 +99,8 @@ class BackendRepository:
             self.db_rep.store_transaction(move_tx)
             block = self.db_rep.generate_block()
             self.block_rep.store(block)
-            self.net_rep.request_publish_block(block)
+            block = NetworkBlock.from_db_model(block)
+            self.net_rep.relay_block(block)
         elif event == ActorEvent.PICK:
             pick_tx = self.static_rep.pick_object(actor_id)
             if not pick_tx:
@@ -86,10 +109,15 @@ class BackendRepository:
             self.db_rep.store_transaction(pick_tx)
             block = self.db_rep.generate_block()
             self.block_rep.store(block)
-            self.net_rep.request_publish_block(block)
+            block = NetworkBlock.from_db_model(block)
+            self.net_rep.relay_block(block)
         elif event == ActorEvent.DROP:
             drop_tx = self.static_rep.drop_object(actor_id=actor_id, object_id=kwargs['object_id'])
             self.db_rep.store_transaction(drop_tx)
+            block = self.db_rep.generate_block()
+            self.block_rep.store(block)
+            block = NetworkBlock.from_db_model(block)
+            self.net_rep.relay_block(block)
 
     def cmd_handler_thread(self):
         while True:
