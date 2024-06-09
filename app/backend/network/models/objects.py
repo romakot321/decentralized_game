@@ -165,7 +165,7 @@ class NetworkBlock(BaseModel):
             transactions.append(NetworkTransaction.decode(data[i:i + tx_header * 2 + outputs_size + inputs_size]))
             i += tx_header * 2 + outputs_size + inputs_size
         return cls(
-            timestamp=dt.datetime.fromtimestamp(timestamp),
+            timestamp=dt.datetime.fromtimestamp(timestamp, dt.UTC),
             nounce=nounce,
             prev_hash=prev_hash.decode(),
             transactions=transactions

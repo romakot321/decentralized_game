@@ -91,6 +91,9 @@ class _BlockParent(StorableModel):
 
 
 class Block(_BlockParent):
+    def get_now_time():
+        return dt.datetime.now(dt.UTC)
+
     transactions: list[Transaction]
     previous_hash: str
     timestamp: dt.datetime = field(default_factory=dt.datetime.now)
