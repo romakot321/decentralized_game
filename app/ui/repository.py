@@ -13,7 +13,7 @@ pg.font.init()
 
 
 class UIRepository:
-    COOLDOWN = 0.02
+    COOLDOWN: float = 5.0
 
     def __init__(self, backend_service):
         self.screen = None
@@ -104,14 +104,14 @@ class UIRepository:
         )
 
     def can_do_action(self):
-        return (dt.datetime.now() - self._last_action).microseconds >= self.COOLDOWN * 10 ** 6
+        return (dt.datetime.now() - self._last_action).total_seconds() >= self.COOLDOWN
 
     def _draw_actors(self):
-        positions = self.backend_service.get_actors_positions()
+        actors = self.backend_service.get_actors_positions()
         my_actor_position = self.backend_service.get_my_actor_position()
         my_actor_position = (my_actor_position[0] - (SCREEN_SIZE[0] // SCALE // 2),
                              my_actor_position[1] - (SCREEN_SIZE[1] // SCALE // 2))
-        for position in positions.keys():
+        for position in [i.position for i in actors]:
             position = (position[0] - my_actor_position[0], position[1] - my_actor_position[1])
             self.screen.fill(
                 (255, 0, 0),
@@ -131,9 +131,9 @@ class UIRepository:
             position = (position[0] - my_actor_position[0], position[1] - my_actor_position[1])
             self.screen.fill(
                 (
-                    int(obj.object_id[:2], 16),
-                    int(obj.object_id[2:4], 16),
-                    int(obj.object_id[4:6], 16)
+                    int(obj.id[:2], 16),
+                    int(obj.id[2:4], 16),
+                    int(obj.id[4:6], 16)
                 ),
                 (
                     (position[0] * SCALE, position[1] * SCALE),
@@ -164,7 +164,7 @@ class UIRepository:
     def run(self):
         key_down = None
         while self.running:
-            self.clock.tick(20)
+            self.clock.tick(5)
 
             for e in pg.event.get():
                 if e.type == pg.QUIT:
@@ -211,3 +211,9 @@ class UIRepository:
             pg.display.flip()
         pg.exit()
 
+
+if __name__ == '__main__':
+    back_service = BackendService()
+    rep = UIRepository(back_service)
+    rep.init()
+    rep.run()

@@ -16,8 +16,13 @@ from app.backend.network.store import NodesStore
 
 from app.backend.repository import BackendRepository
 
-from app.ui.repository import UIRepository
-from app.ui.backend_service import BackendService
+
+#from app.ui.repository import UIRepository
+#from app.ui.backend_service import BackendService
+
+
+from app.api.repository import APIRepository
+
 
 import os
 import threading
@@ -60,14 +65,16 @@ else:
 
 backend_rep = BackendRepository(db_service, actor_rep, net_rep, static_rep, db_rep, world_service)
 
-backend_service = BackendService(backend_rep)
-ui_rep = UIRepository(backend_service)
+#backend_service = BackendService(backend_rep)
+#ui_rep = UIRepository(backend_service)
+
+api_rep = APIRepository(backend_rep)
 
 
-if __name__ == '__main__':
-    backend_rep.init(SEEDER_ADDRESS)
-    if not NODE_ONLY:
-        ui_rep.init()
-        threading.Thread(target=backend_rep.cmd_handler_thread).start()
-        ui_rep.run()
+backend_rep.init(SEEDER_ADDRESS)
+#if not NODE_ONLY:
+#    ui_rep.init()
+threading.Thread(target=backend_rep.cmd_handler_thread).start()
+#    ui_rep.run()
+api_application = api_rep.init()
 

@@ -6,6 +6,7 @@ from enum import Enum
 from app.backend.engine.models import Actor
 from app.backend.engine.models import Biome
 from app.backend.database.models import Block
+from app.backend.database.models import ValidateError
 from app.backend.network.models import NetworkBlock, NetworkTransaction
 from app.backend.utils import asdict
 
@@ -93,6 +94,8 @@ class BackendRepository:
 
     def handle_event(self, event: ActorEvent, actor_token: str, **kwargs):
         actor_key = self.db_rep.load_key_by_token(actor_token)
+        if actor_key is None:
+            raise ValidateError("Invalid actor token")
         tx = None
 
         if event in (ActorEvent.MOVE_UP, ActorEvent.MOVE_DOWN, ActorEvent.MOVE_RIGHT, ActorEvent.MOVE_LEFT):
@@ -105,8 +108,9 @@ class BackendRepository:
         if not tx:
             return
         self.db_rep.store_transaction(tx)
-        tx = NetworkTransaction.from_db_model(tx)
-        self.net_rep.relay_transaction(tx)
+        net_tx = NetworkTransaction.from_db_model(tx)
+        self.net_rep.relay_transaction(net_tx)
+        return tx
 
     def cmd_handler_thread(self):
         while True:

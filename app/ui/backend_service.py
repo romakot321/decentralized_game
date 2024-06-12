@@ -1,36 +1,70 @@
-from app.backend.repository import ActorEvent
-from app.backend.engine.models import Actor
-from app.ui.models import Collectable
+from app.ui.models import Collectable, Actor, ActorEvent
 import pygame as pg
+import requests
+import os
+from enum import Enum
+from pydantic import BaseModel
+
+
+class Biome(BaseModel):
+    name: str
+    min_height: int
+    max_height: int
+
+
+class Biomes(Enum):
+    plain = Biome(name='plain', min_height=-10000, max_height=1)
+    mountain = Biome(name='mountain', min_height=2, max_height=10000)
 
 
 class BackendService:
-    def __init__(self, backend_repository):
-        self.back_rep = backend_repository
+    node_address = os.getenv("NODE_ADDRESS", '127.0.0.1:8000')
+    node_url = 'http://' + node_address.rstrip('/')
+
+    def __init__(self):
         self.actor: Actor = None
 
+    def _do_post_request(self, path: str, **data) -> dict:
+        resp = requests.post(self.node_url + '/' + path.lstrip('/'), json=data)
+        assert resp.status_code // 100 == 2, resp.text
+        return resp.json()
+
+    def _do_get_request(self, path: str, **data):
+        resp = requests.get(self.node_url + "/" + path.lstrip('/'), data=data)
+        assert resp.status_code // 100 == 2, resp.text
+        return resp.json()
+
     def init(self, password: str, address: str = None):
-        self.actor = self.back_rep.make_actor(password, address)
+        request_data = {'password': password}
+        if address:
+            request_data['address'] = address
+        actor_state = self._do_post_request('actor', **request_data)
+        self.actor = Actor.model_validate(actor_state)
 
-    def drop_item(self, object_id: str):
-        self.back_rep.handle_event(ActorEvent.DROP, self.actor.token, object_id=object_id)
+    def drop_item(self, collectable_id: str):
+        self._do_post_request('actor/event', token=self.actor.token, event=ActorEvent.DROP.value, args={'object_id': collectable_id})
 
-    def get_actors_positions(self):
-        return self.back_rep.get_actors_positions()
+    def get_actors_positions(self) -> list[Actor]:
+        actors_states = self._do_get_request('actor')
+        return [Actor.model_validate(actor) for actor in actors_states] 
     
     def get_my_actor_position(self) -> tuple[int, int]:
-        return self.back_rep.get_actor_position(self.actor.id)
+        actor_state = self._do_get_request(f'actor/{self.actor.id}')
+        return Actor.model_validate(actor_state).position
 
     def get_static_objects_positions(self):
-        return self.back_rep.get_static_objects_positions()
+        objects_states = self._do_get_request('static')
+        return [Collectable.model_validate(state) for state in objects_states]
 
     def get_chunk_info(self, chunk_x, chunk_y):
+        return Biomes.plain
         return self.back_rep.get_chunk_info(chunk_x, chunk_y)
 
     def get_actor_inventory(self) -> list[Collectable]:
-        items = self.back_rep.get_actor_picked(self.actor.id)
+        actor_state = self._do_get_request(f'actor/{self.actor.id}')
+        items = Actor.model_validate(actor_state).inventory
         return [
-            Collectable(object_id=i)
+            Collectable(id=i)
             for i in items
         ]
 
@@ -48,7 +82,7 @@ class BackendService:
             event = ActorEvent.PICK
 
         if event:
-            self.back_rep.handle_event(event, self.actor.token)
+            self._do_post_request('actor/event', token=self.actor.token, event=event.value)
             return True
         return False
 

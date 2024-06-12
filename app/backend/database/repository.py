@@ -96,13 +96,15 @@ class DatabaseRepository:
 
     def generate_key(self, password: str):
         key = self.key_service.generate(password)
-        key.token = uuid4()
+        key.token = str(uuid4())
         self._token_to_key[key.token] = key
         return key
 
-    def load_key(self, address: str, password: str) -> Key:
+    def load_key(self, address: str, password: str) -> Key | None:
         key = self.key_service.load(address, password)
-        key.token = uuid4()
+        if key is None:
+            raise ValidateError("Invalid address or password")
+        key.token = str(uuid4())
         self._token_to_key[key.token] = key
         return key
 

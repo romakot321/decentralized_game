@@ -2,7 +2,7 @@ import pygame as pg
 from pathlib import Path
 import random
 
-assets_path = Path('../assets/')
+assets_path = Path('../../assets/')
 background_images = {
     'plain': [
         [30, pg.image.load(assets_path / 'grass_top2.png')],
@@ -60,14 +60,14 @@ class InventoryPane(UISprite):
         if len(self._inventory) == len(inventory):
             return
 
-        stored_ids = [i[0].object_id for i in self._inventory]
+        stored_ids = [i[0].id for i in self._inventory]
         self._inventory = [
             (
                 item,
                 (
-                    int(item.object_id[:2], 16),
-                    int(item.object_id[2:4], 16),
-                    int(item.object_id[4:6], 16)
+                    int(item.id[:2], 16),
+                    int(item.id[2:4], 16),
+                    int(item.id[4:6], 16)
                 )
             )
             for item in inventory
@@ -77,7 +77,7 @@ class InventoryPane(UISprite):
         x = 0
         for item, _ in self._inventory:
             if click_pos[0] in range(x, x + self._item_image_size[0] + 5):
-                self.backend_service.drop_item(item.object_id)
+                self.backend_service.drop_item(item.id)
                 break
             x += self._item_image_size[0] + 5
 
