@@ -2,13 +2,18 @@ from app.backend.database.models import Block
 from app.backend.database.models import Transaction
 from app.backend.database.models import TXOutput, TXInput, UTXOs
 from app.backend.database.models import ValidateError
+from app.backend.database.models import Key
 import datetime as dt
+from uuid import uuid4
 
 
 class DatabaseRepository:
-    def __init__(self, block_service, transaction_service):
+    def __init__(self, block_service, transaction_service, key_service):
         self.block_service = block_service
         self.tx_service = transaction_service
+        self.key_service = key_service
+
+        self._token_to_key: dict[str, Key] = {}
 
     def iterate_blocks(self, stop_hash: str | None = None):
         return self.block_service.iterate_blocks(stop_hash)
@@ -30,11 +35,11 @@ class DatabaseRepository:
     def make_transaction(self, inputs: list[TXInput], outputs: list[TXOutput]) -> Transaction:
         return self.tx_service.make(inputs=inputs, outputs=outputs)
 
-    def make_transaction_output(self, input_index, value: bytes, lock_script: bytes = None):
-        return self.tx_service.make_output(input_index, value, lock_script)
+    def make_transaction_output(self, input_index, value: bytes, lock_script: bytes = None, receiver_address: bytes = None):
+        return self.tx_service.make_output(input_index, value, lock_script, receiver_address)
 
-    def make_transaction_input(self, tx_id, output_index, unlock_script: bytes = None):
-        return self.tx_service.make_input(tx_id, output_index, unlock_script)
+    def make_transaction_input(self, tx_id, output_index, unlock_script: bytes = None, key: Key = None):
+        return self.tx_service.make_input(tx_id, output_index, unlock_script, key)
 
     def make_block(
             self,
@@ -88,4 +93,19 @@ class DatabaseRepository:
                 continue
             print("ADD NEW", block.hash)
             self.store_block(block)
+
+    def generate_key(self, password: str):
+        key = self.key_service.generate(password)
+        key.token = uuid4()
+        self._token_to_key[key.token] = key
+        return key
+
+    def load_key(self, address: str, password: str) -> Key:
+        key = self.key_service.load(address, password)
+        key.token = uuid4()
+        self._token_to_key[key.token] = key
+        return key
+
+    def load_key_by_token(self, token: str) -> Key | None:
+        return self._token_to_key.get(token, None)
 

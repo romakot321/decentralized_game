@@ -44,7 +44,7 @@ class ConnectionService:
         self.bind_address = bind_address
         self.connect_address = connect_address
 
-        self.socket = socket.socket()
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._connected_socket = None
 
     @staticmethod
@@ -56,6 +56,7 @@ class ConnectionService:
     @staticmethod
     def _init_connect(sock, connect_address: tuple):
         try:
+            sock.settimeout(5)
             sock.connect(connect_address)
         except ConnectionRefusedError:
             return

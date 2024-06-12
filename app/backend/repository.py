@@ -20,23 +20,27 @@ class ActorEvent(Enum):
 
 
 class BackendRepository:
-    def __init__(self, db_service, block_repository,
+    """Repository with game logic"""
+
+    def __init__(self, db_service,
                  actor_repository, network_repository,
-                 transaction_repository, static_object_repository,
+                 static_object_repository,
                  database_repository, world_service):
         self.db_service = db_service
-        self.block_rep = block_repository
         self.actor_rep = actor_repository
         self.net_rep = network_repository
-        self.trans_rep = transaction_repository
         self.static_rep = static_object_repository
         self.db_rep = database_repository
         self.world_service = world_service
 
         self.myactor = None
 
-    def make_actor(self) -> Actor:
-        return self.actor_rep.make()
+    def make_actor(self, password: str, address: str = None) -> Actor:
+        """
+        Password for private key
+        If address not specified, then new key will create
+        """
+        return self.actor_rep.make(password, address)
 
     def get_actors_positions(self) -> dict[tuple[int, int], str]:
         actors_position = {}
@@ -76,51 +80,59 @@ class BackendRepository:
         else:
             while len(blocks := list(self.db_rep.iterate_blocks())) == 0:
                 pass
+                block = self.db_rep.generate_block()
+                print(block)
+                print("GENERATED", len(block.transactions), 'transactrions')
+                self.db_rep.store_block(block)
+                block = NetworkBlock.from_db_model(block)
+                self.net_rep.relay_block(block)
             genesis_block = next(self.db_rep.iterate_blocks())
         
         print("GENESIS", genesis_block)
         self.world_service.init(int(genesis_block.hash, 16))
 
-    def handle_event(self, event: ActorEvent, actor_id: str, **kwargs):
+    def handle_event(self, event: ActorEvent, actor_token: str, **kwargs):
+        actor_key = self.db_rep.load_key_by_token(actor_token)
+        tx = None
+
         if event in (ActorEvent.MOVE_UP, ActorEvent.MOVE_DOWN, ActorEvent.MOVE_RIGHT, ActorEvent.MOVE_LEFT):
-            move_tx = self.actor_rep.make_move(actor_id, event)
-            self.db_rep.store_transaction(move_tx)
-            move_tx = NetworkTransaction.from_db_model(move_tx)
-            self.net_rep.relay_transaction(move_tx)
+            tx = self.actor_rep.make_move(actor_key, event)
         elif event == ActorEvent.PICK:
-            pick_tx = self.static_rep.pick_object(actor_id)
-            if not pick_tx:
-                print("No object found")
-                return
-            self.db_rep.store_transaction(pick_tx)
-            pick_tx = NetworkTransaction.from_db_model(pick_tx)
-            self.net_rep.relay_transaction(pick_tx)
+            tx = self.static_rep.pick_object(actor_key)
         elif event == ActorEvent.DROP:
-            drop_tx = self.static_rep.drop_object(actor_id=actor_id, object_id=kwargs['object_id'])
-            self.db_rep.store_transaction(drop_tx)
-            drop_tx = NetworkTransaction.from_db_model(drop_tx)
-            self.net_rep.relay_transaction(drop_tx)
+            tx = self.static_rep.drop_object(actor_key=actor_key, object_id=kwargs['object_id'])
+
+        if not tx:
+            return
+        self.db_rep.store_transaction(tx)
+        tx = NetworkTransaction.from_db_model(tx)
+        self.net_rep.relay_transaction(tx)
 
     def cmd_handler_thread(self):
         while True:
             cmd = input("Enter command: ").lower()
             if cmd == 'blocks':
-                for block in self.block_rep.iterate_blocks():
+                for block in self.db_rep.iterate_blocks():
                     print(str(block))
             elif cmd == 'objects':
-                object_txs = self.static_rep.init(next(self.block_rep.iterate_blocks()).hash)
+                object_txs = self.static_rep.init(next(self.db_rep.iterate_blocks()).hash)
                 for tx in object_txs:
                     self.db_rep.store_transaction(tx)
                 block = self.db_rep.generate_block()
                 self.db_rep.store_block(block)
             elif cmd == 'gen':
                 block = self.db_rep.generate_block()
+                print(block)
                 print("GENERATED", len(block.transactions), 'transactrions')
                 self.db_rep.store_block(block)
                 block = NetworkBlock.from_db_model(block)
                 self.net_rep.relay_block(block)
             elif cmd == 'inv':
                 print(self.static_rep.get_actor_picked(self.myactor.id))
+            elif cmd == 'txs':
+                print(*map(str, self.db_rep.find_utxos()), sep='\n')
+            elif cmd == 'abc':
+                self.db_rep.tx_service.db_service.abc()
             event = None
             if cmd == 'd':
                 event = ActorEvent.MOVE_RIGHT

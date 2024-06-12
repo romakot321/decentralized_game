@@ -2,6 +2,7 @@ from app.backend.database.block import BlockService
 from app.backend.database.database import DatabaseService
 from app.backend.database.transaction import TransactionService
 from app.backend.database.repository import DatabaseRepository
+from app.backend.database.key import KeyService
 
 from app.backend.engine.actor import ActorRepository, MoveDirections
 from app.backend.engine.static import StaticObjectRepository
@@ -30,21 +31,14 @@ SEEDER_ADDRESS = os.getenv('SEEDER_ADDRESS', '127.0.0.1:8989').split(':')
 SEEDER_ADDRESS = (SEEDER_ADDRESS[0], int(SEEDER_ADDRESS[1]))
 LOCAL_MODE = int(os.getenv('LOCAL_MODE', '0'))
 NODE_ONLY = int(os.getenv('NODE_ONLY', '0'))
-KEY_FILENAME = os.getenv('KEY_FILENAME', 'key')
-
-try:
-    with open(KEY_FILENAME, 'rb') as f:
-        private_key = Ed25519PrivateKey.from_private_bytes(f.read())
-except FileNotFoundError:
-    private_key = Ed25519PrivateKey.generate()
-    with open(KEY_FILENAME, 'wb') as f:
-        f.write(private_key.private_bytes_raw())
+ADDRESS = os.getenv('ADDRESS', 'key')
 
 db_service = DatabaseService()
+key_service = KeyService()
 
-trans_rep = TransactionService(db_service, private_key)
+trans_rep = TransactionService(db_service)
 block_rep = BlockService(db_service)
-db_rep = DatabaseRepository(block_rep, trans_rep)
+db_rep = DatabaseRepository(block_rep, trans_rep, key_service)
 
 actor_rep = ActorRepository(db_rep)
 static_rep = StaticObjectRepository(actor_rep, db_rep)
@@ -64,17 +58,16 @@ else:
             return []
     net_rep = NetRep()
 
-backend_rep = BackendRepository(db_service, block_rep, actor_rep, net_rep, trans_rep, static_rep, db_rep, world_service)
+backend_rep = BackendRepository(db_service, actor_rep, net_rep, static_rep, db_rep, world_service)
 
 backend_service = BackendService(backend_rep)
 ui_rep = UIRepository(backend_service)
 
 
 if __name__ == '__main__':
-    threading.Thread(target=backend_rep.cmd_handler_thread).start()
-
     backend_rep.init(SEEDER_ADDRESS)
     if not NODE_ONLY:
         ui_rep.init()
+        threading.Thread(target=backend_rep.cmd_handler_thread).start()
         ui_rep.run()
 

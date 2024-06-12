@@ -1,4 +1,5 @@
 from app.backend.repository import ActorEvent
+from app.backend.engine.models import Actor
 from app.ui.models import Collectable
 import pygame as pg
 
@@ -6,13 +7,13 @@ import pygame as pg
 class BackendService:
     def __init__(self, backend_repository):
         self.back_rep = backend_repository
-        self.actor = None
+        self.actor: Actor = None
 
-    def init(self):
-        self.actor = self.back_rep.make_actor()
+    def init(self, password: str, address: str = None):
+        self.actor = self.back_rep.make_actor(password, address)
 
     def drop_item(self, object_id: str):
-        self.back_rep.handle_event(ActorEvent.DROP, self.actor.id, object_id=object_id)
+        self.back_rep.handle_event(ActorEvent.DROP, self.actor.token, object_id=object_id)
 
     def get_actors_positions(self):
         return self.back_rep.get_actors_positions()
@@ -47,7 +48,7 @@ class BackendService:
             event = ActorEvent.PICK
 
         if event:
-            self.back_rep.handle_event(event, self.actor.id)
+            self.back_rep.handle_event(event, self.actor.token)
             return True
         return False
 

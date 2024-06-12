@@ -44,51 +44,55 @@ class StaticObjectRepository:
         for utxos in self.db_rep.find_utxos(output_value=object_id.encode()):
             return utxos.transaction
 
-    def make_pick_transaction(self, object_id: str, actor_id: str):
+    def make_pick_transaction(self, object_id: str, actor_key):
         object_tx = self.find_object_transaction(object_id)
-        if object_tx is None:
-            print(self.world, object_id)
-        actor_move_tx, actor_move_tx_out = self.actor_rep.get_actor_outputs(actor_id, movement=True)[0]
+        actor_move_tx, actor_move_tx_out = self.actor_rep.get_actor_outputs(actor_key.hexaddress, movement=True)[0]
         inputs = [
             self.db_rep.make_transaction_input(
                 tx_id=object_tx.id,
                 output_index=0,
-                unlock_script=b''
+                unlock_script=b'',
+                key=actor_key
             ),
             self.db_rep.make_transaction_input(
                 tx_id=actor_move_tx.id,
-                output_index=actor_move_tx.outputs.index(actor_move_tx_out)
+                output_index=actor_move_tx.outputs.index(actor_move_tx_out),
+                key=actor_key
             )
         ]
         outputs = [
             self.db_rep.make_transaction_output(
                 input_index=0,
-                value=object_tx.outputs[0].value
+                value=object_tx.outputs[0].value,
+                receiver_address=actor_key.address
             ),
             self.db_rep.make_transaction_output(
                 input_index=1,
-                value=actor_move_tx_out.value
+                value=actor_move_tx_out.value,
+                receiver_address=actor_key.address
             )
         ]
         return self.db_rep.make_transaction(inputs=inputs, outputs=outputs)
 
-    def drop_object(self, object_id: str, actor_id):
+    def drop_object(self, object_id: str, actor_key):
         object_tx = self.find_object_transaction(object_id)
         if object_tx is None:
             return
 
-        actor_pos = self.actor_rep.get_position(actor_id)
+        actor_pos = self.actor_rep.get_position(actor_key.hexaddress)
         inputs = [
             self.db_rep.make_transaction_input(
                 tx_id=object_tx.id,
-                output_index=0
+                output_index=0,
+                key=actor_key
             )
         ]
         outputs = [
             self.db_rep.make_transaction_output(
                 input_index=0,
                 value=object_id.encode(),
-                lock_script=self.make_object_unlock_script(actor_pos)
+                lock_script=self.make_object_unlock_script(actor_pos),
+                receiver_address=actor_key.address
             )
         ]
         self.world.append(
@@ -122,8 +126,9 @@ class StaticObjectRepository:
         self.check_new()
         return self.world
 
-    def get_actor_picked(self, actor_id) -> list[str]:
+    def get_actor_picked(self, actor_id: str) -> list[str]:
         picked = []
+        actor_id: bytes = bytes.fromhex(actor_id)
         for utxos in self.db_rep.find_utxos(output_lock_script_part=actor_id):
             for out_index in utxos.outputs_indexes:
                 out = utxos.transaction.outputs[out_index]
@@ -163,13 +168,9 @@ class StaticObjectRepository:
                         )
                     )
 
-    def pick_object(self, actor_id: str) -> Transaction | None:
-        actor_pos = self.actor_rep.get_position(actor_id)
-        tx = None
+    def pick_object(self, actor_key: str) -> Transaction | None:
+        actor_pos = self.actor_rep.get_position(actor_key.hexaddress)
         for obj in self.world:
             if actor_pos == obj.position:
-                tx = self.make_pick_transaction(obj.object_id, actor_id)
-                break
-        self.check_remove()
-        return tx
+                return self.make_pick_transaction(obj.object_id, actor_key)
 

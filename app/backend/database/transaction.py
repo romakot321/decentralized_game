@@ -2,8 +2,10 @@ from app.backend.database.models import Transaction
 from app.backend.database.models import UTXOs
 from app.backend.database.models import TXInput, TXOutput
 from app.backend.database.models import ValidateError
+from app.backend.database.models import Key
 
 from app.backend.database.script import ScriptService, Operation
+from app.backend.database.key import KeyService
 
 from enum import Enum
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -18,14 +20,8 @@ def hash_string(string: str) -> bytes:
 class TransactionService:
     """Implements transaction pool and validator"""
 
-    def __init__(self, db_service, private_key: Ed25519PrivateKey | bytes):
-        if isinstance(private_key, bytes):
-            private_key = Ed25519PrivateKey.from_private_bytes(private_key)
-
+    def __init__(self, db_service):
         self.db_service = db_service
-        self.private_key = private_key
-        self.public_key = self.private_key.public_key()
-        self.address = hash_string(self.public_key.public_bytes_raw())
 
     def get_utxos(
             self,
@@ -67,6 +63,7 @@ class TransactionService:
                 continue
             for utxos in utxos_list:
                 if inp.output_index not in utxos.outputs_indexes:
+                    print("!@#!@#!@#$")
                     continue
                 utxos.outputs_indexes.remove(inp.output_index)
                 if not utxos.outputs_indexes:
@@ -102,15 +99,21 @@ class TransactionService:
         outputs = [(TXOutput(**out) if isinstance(out, dict) else out) for out in outputs]
         return Transaction(inputs=inputs, outputs=outputs)
 
-    def make_input(self, tx_id, output_index, unlock_script: bytes = None) -> TXInput:
+    def make_input(
+            self,
+            tx_id,
+            output_index,
+            unlock_script: bytes = None,
+            key: Key = None
+    ) -> TXInput:
         """By default unlock script is tx signature + public key"""
         if unlock_script is None:
             utxos = self.get_utxos(transaction_id=tx_id)
             if not utxos:
                 raise ValueError("No available utxos found for new input")
             utxos = utxos[0]
-            signature = self.private_key.sign(utxos.transaction.encode())
-            raw_public_key = self.public_key.public_bytes_raw()
+            signature = key.private_key.sign(utxos.transaction.encode())
+            raw_public_key = key.public_key.public_bytes_raw()
             unlock_script = Operation.push.value + len(signature).to_bytes(8) + signature
             unlock_script += Operation.push.value + len(raw_public_key).to_bytes(8) + raw_public_key
         return TXInput(
@@ -119,12 +122,18 @@ class TransactionService:
             unlock_script=unlock_script
         )
 
-    def make_output(self, input_index, value: bytes, lock_script: bytes = None) -> TXOutput:
+    def make_output(
+            self,
+            input_index,
+            value: bytes,
+            lock_script: bytes = None,
+            receiver_address: bytes = None
+    ) -> TXOutput:
         """By default lock script is address of receiver"""
         if lock_script is None:
             lock_script = Operation.duplicate_top.value
             lock_script += Operation.hash_top.value
-            lock_script += Operation.push.value + len(self.address).to_bytes(8) + self.address
+            lock_script += Operation.push.value + len(receiver_address).to_bytes(8) + receiver_address
             lock_script += Operation.check_equal.value
             lock_script += Operation.verify_signature.value
         return TXOutput(

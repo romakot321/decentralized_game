@@ -1,4 +1,5 @@
 import datetime as dt
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hashlib import sha256
 from uuid import UUID
 from app.backend.utils import asdict
@@ -73,11 +74,26 @@ class UTXOs(StorableModel):
     outputs_indexes: list[int]
     transaction: Transaction
 
+    def __str__(self):
+        return f'indexes: {self.outputs_indexes}\n{str(self.transaction)}'
+
 
 @dataclass
 class Tip(StorableModel):
     value: str
     id: str = 'tip'
+
+
+@dataclass
+class Key:
+    private_key: Ed25519PrivateKey
+    public_key: Ed25519PrivateKey
+    address: bytes
+    token: str | None = None
+
+    @property
+    def hexaddress(self):
+        return hex(int.from_bytes(self.address))[2:]
 
 
 @dataclass
@@ -96,7 +112,7 @@ class Block(_BlockParent):
 
     transactions: list[Transaction]
     previous_hash: str
-    timestamp: dt.datetime = field(default_factory=dt.datetime.now)
+    timestamp: dt.datetime = field(default_factory=get_now_time)
     nounce: int = 0
 
     @property

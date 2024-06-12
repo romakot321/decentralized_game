@@ -5,11 +5,8 @@ from enum import Enum
 
 @dataclass
 class Actor:
-    @staticmethod
-    def new_id():
-        return str(uuid4())
-
-    id: str = field(default_factory=new_id)
+    id: str
+    token: str | None = None
 
 
 @dataclass

@@ -3,6 +3,7 @@ from app.ui.backend_service import BackendService
 from app.ui.sprites import BackgroundTile
 from app.ui.sprites import InventoryPane
 import datetime as dt
+import os
 
 
 SCREEN_SIZE = (550, 550)
@@ -34,6 +35,18 @@ class UIRepository:
             SCREEN_SIZE[1] * 10
         )
 
+    def get_auth_pair(self) -> tuple[str, str]:
+        keys = os.listdir('keys')
+        for i, key in enumerate(keys):
+            print(i + 1, key[:16])
+        address = input("Address number: ")
+        password = input("Password: ")
+        if address.isdigit():
+            address = keys[int(address) - 1]
+        else:
+            address = None
+        return (password, address)
+
     def init(self):
         self.screen = pg.display.set_mode(SCREEN_SIZE)
         for y in range(self._chunks_border.top, self._chunks_border.bottom, SCALE):
@@ -42,7 +55,8 @@ class UIRepository:
                 biome = self.backend_service.get_chunk_info(chunk_x, chunk_y)
                 self.sprites.add(BackgroundTile(coordinates=(x, y), biome=biome))
         self.ui_sprites.add(InventoryPane(SCREEN_SIZE, self.backend_service))
-        self.backend_service.init()
+        password, address = self.get_auth_pair()
+        self.backend_service.init(password, address)
 
     def generate_chunks(self, left=False, right=False, top=False, bottom=False):
         expand_bias = 5 * SCALE

@@ -27,21 +27,26 @@ class DatabaseService:
         if model.table_name not in self.tables.keys():
             self.tables[model.table_name] = {}
         self.tables[model.table_name][model_id] = model
-        with open(DB_FILENAME, 'wb') as f:
+        with open(DB_FILENAME, 'wb+') as f:
             pickle.dump(list(self.tables.items()), f)
         return model_id
 
     def update(self, model_id, model: StorableModel):
         self.tables[model.table_name][model_id] = model
+        with open(DB_FILENAME, 'wb+') as f:
+            pickle.dump(list(self.tables.items()), f)
 
     def get(self, table_name, model_id: int) -> dict | None:
         return self.tables.get(table_name, {}).get(model_id)
 
     def delete(self, table_name, model_id: int):
         try:
-            return self.tables.get(table_name, {}).pop(model_id)
+            ret = self.tables.get(table_name, {}).pop(model_id)
         except KeyError:
             return
+        with open(DB_FILENAME, 'wb+') as f:
+            pickle.dump(list(self.tables.items()), f)
+        return ret
 
     @staticmethod
     def _filter(objects, **filters):

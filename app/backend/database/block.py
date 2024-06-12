@@ -17,7 +17,7 @@ class BlockService:
             last_block = self.get_last()
             prev_hash = '' if last_block is None else last_block.hash
         if timestamp is None:
-            timestamp = dt.datetime.now()
+            timestamp = dt.datetime.now(dt.UTC)
         new_block = Block(
             transactions=transactions,
             previous_hash=prev_hash,

@@ -15,15 +15,21 @@ class MoveDirections(Enum):
 class ActorRepository:
     def __init__(self, database_repository):
         self.db_rep = database_repository
-        self.actor_id = self.db_rep.tx_service.address
         self._pos_cache = {}
         self._actors_cache = (None, set())
 
-    def make(self) -> Actor:
-        return Actor(id=self.actor_id)
+    def make(self, password: str, address: str | None) -> Actor:
+        if address is None:
+            key = self.db_rep.generate_key(password)
+        else:
+            key = self.db_rep.load_key(address, password)
+            if key is None:
+                raise ValueError("Invalid address or password")
+        return Actor(id=key.hexaddress, token=key.token)
 
     def get_actor_unspent_transactions(self, actor_id: str) -> list[tuple[Transaction, int]]:
         txs = []
+        actor_id: bytes = bytes.fromhex(actor_id)
         utxos_list = self.db_rep.find_utxos(output_lock_script_part=actor_id)
         for utxos in utxos_list:
             for out_index in utxos.outputs_indexes:
@@ -33,7 +39,7 @@ class ActorRepository:
 
     def get_actor_outputs(
             self,
-            actor_id,
+            actor_id: str,
             movement: bool = False,
             pick: bool = False
     ) -> list[tuple]:
@@ -48,9 +54,10 @@ class ActorRepository:
                 outputs.append((tx, out))
         return outputs
 
-    def make_move(self, actor_id: str, direction: MoveDirections) -> Transaction:
+    def make_move(self, actor_key, direction: MoveDirections) -> Transaction:
         tx_inputs = []
 
+        actor_id = actor_key.hexaddress
         curr_pos = self.get_position(actor_id)
         new_pos = (curr_pos[0] + direction.value[0], curr_pos[1] + direction.value[1])
         move_outputs = self.get_actor_outputs(actor_id, movement=True)
@@ -59,12 +66,14 @@ class ActorRepository:
             move_tx, move_output = move_outputs[0]
             tx_inputs.append(self.db_rep.make_transaction_input(
                 tx_id=move_tx.id,
-                output_index=move_tx.outputs.index(move_output)
+                output_index=move_tx.outputs.index(move_output),
+                key=actor_key
             ))
         tx_outputs = [
             self.db_rep.make_transaction_output(
                 input_index=0,
-                value=';'.join(map(str, new_pos)).encode()
+                value=';'.join(map(str, new_pos)).encode(),
+                receiver_address=actor_key.address
             )
         ]
         tx = self.db_rep.make_transaction(tx_inputs, tx_outputs)
@@ -82,7 +91,7 @@ class ActorRepository:
         for utxos in utxos_list:
             for out_index in utxos.outputs_indexes:
                 if b';' in utxos.transaction.outputs[out_index].value:
-                    actors.add(utxos.transaction.outputs[out_index].lock_script)
+                    actors.add(utxos.transaction.outputs[out_index].lock_script.hex()[22:-4])
         return [Actor(id=i) for i in actors]
 
     def get_position(self, actor_id) -> tuple[int, int]:
