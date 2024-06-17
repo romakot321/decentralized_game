@@ -145,5 +145,4 @@ cython_debug/
 .idea/
 images/
 db*
-key*
 **keys/
